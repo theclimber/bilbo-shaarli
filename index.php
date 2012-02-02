@@ -1316,6 +1316,82 @@ function showMonthlyRSS()
 }
 
 
+// Daily RSS feed: 1 RSS entry per week giving all the links on that week.
+// Gives the last 7 weeks (which have links).
+// This RSS feed cannot be filtered.
+function showWeeklyRSS()
+{
+    global $LINKSDB;
+    
+    /* Some Shaarlies may have very few links, so we need to look
+       back in time (rsort()) until we have enough weeks ($nb_of_weeks).
+	 */
+	$day_to_publish = 1;  // 1 (for Monday) through 7 (for Sunday)
+    $linkdates=array(); foreach($LINKSDB as $linkdate=>$value) { $linkdates[]=$linkdate; } 
+    rsort($linkdates);
+    $nb_of_weeks=7; // We take 7 weeks.
+//    $today=Date('Ymd');
+	$day_of_the_week=Date('N') - $day_to_publish;
+	$last_published = Date('Ymd',time() - 3600*24*$day_of_the_week); // one week ago
+    $weeks=array();
+    foreach($linkdates as $linkdate)
+    {
+		$linktime = mktime(0,0,0, substr($linkdate,4,2), substr($linkdate,6,2), substr($linkdate,0,4));
+		$linkpubdate = Date('Ymd',$linktime + 3600*24*(8-Date('N',$linktime)));
+//		echo $linkdate." - ".$linkpubdate."\n";
+        //$day=substr($linkdate,0,8); // Extract day (without time)
+        if (strcmp($linkpubdate,$last_published)<=0)
+        {
+            if (empty($weeks[$linkpubdate])) $weeks[$linkpubdate]=array();
+            $weeks[$linkpubdate][]=$linkdate;
+        }
+		if (count($weeks)>$nb_of_weeks) break; // Have we collected enough weeks ?*/
+	}
+//	print_r($weeks);
+//	exit();
+    
+    // Build the RSS feed.
+    header('Content-Type: application/rss+xml; charset=utf-8');
+    $pageaddr=htmlspecialchars(indexUrl());
+    echo '<?xml version="1.0" encoding="UTF-8"?><rss version="2.0">';
+    echo '<channel><title>Weekly - '.htmlspecialchars($GLOBALS['title']).'</title><link>'.$pageaddr.'</link>';
+    echo '<description>Weekly shared links</description><language>en-en</language><copyright>'.$pageaddr.'</copyright>'."\n";
+    
+    foreach($weeks as $week=>$linkdates) // For each week.
+    {
+        $weekdate = utf8_encode(strftime('%A %d, %B %Y',linkdate2timestamp($week.'_000000'))); // Full text date
+        $rfc822date = linkdate2rfc822($week.'_000000');
+        $absurl=htmlspecialchars(indexUrl().'?do=weekly&week='.$week);  // Absolute URL of the corresponding "Daily" page.
+        echo '<item><title>'.htmlspecialchars($GLOBALS['title'].' - '.$weekdate).'</title><guid>'.$absurl.'</guid><link>'.$absurl.'</link>';
+        echo '<pubDate>'.htmlspecialchars($rfc822date)."</pubDate>";
+        
+        // Build the HTML body of this RSS entry.
+        $html='';
+        $href='';
+        $links=array();
+        // We pre-format some fields for proper output.
+        foreach($linkdates as $linkdate)
+        {
+            $l = $LINKSDB[$linkdate];
+            $l['formatedDescription']=nl2br(keepMultipleSpaces(text2clickable(htmlspecialchars($l['description']))));
+            $l['thumbnail'] = thumbnail($l['url']);  
+            $l['localdate']=linkdate2locale($l['linkdate']);            
+            if (startsWith($l['url'],'?')) $l['url']=indexUrl().$l['url'];  // make permalink URL absolute
+            $links[$linkdate]=$l;    
+        }
+        // Then build the HTML for this week:
+        $tpl = new RainTPL;    
+        $tpl->assign('links',$links);
+        $html = $tpl->draw('dailyrss',$return_string=true);
+        echo "\n";
+        echo '<description><![CDATA['.$html.']]></description>'."\n</item>\n\n";
+
+    }
+    echo '</channel></rss>';
+    exit;
+}
+
+
 // ------------------------------------------------------------------------------------------
 // Render HTML page (according to URL parameters and user rights)
 function renderPage()
@@ -1558,6 +1634,63 @@ function renderPage()
         $PAGE->assign('previousmonth',$previousmonth);
         $PAGE->assign('nextmonth',$nextmonth);
         $PAGE->renderPage('monthly');
+        exit;
+    }
+
+    // --------- Weekly (all links form a specific week) ----------------------
+    if (isset($_SERVER["QUERY_STRING"]) && startswith($_SERVER["QUERY_STRING"],'do=weekly'))
+    { 
+		$day_to_publish = 1; // 1 for monday, 7 for sunday
+		$day_of_the_week=Date('N') - $day_to_publish;
+		$week = Date('Ymd',time() - 3600*24*$day_of_the_week); // one week ago
+		if (isset($_GET['week'])) {
+			$weektime = mktime(0,0,0, substr($_GET['week'],4,2), substr($_GET['week'],6,2), substr($_GET['week'],0,4));
+			$day_of_the_week=Date('N', $weektime) - $day_to_publish;
+			$week = Date('Ymd',$weektime - 3600*24*$day_of_the_week); // one week ago
+		}
+
+        $previousweek = Date('Ymd',strtotime('-7 days',strtotime($week))); 
+        $nextweek = Date('Ymd',strtotime('+7 days',strtotime($week))); 
+        
+        $linksToDisplay=$LINKSDB->filterWeek($week);
+        // We pre-format some fields for proper output.
+        foreach($linksToDisplay as $key=>$link)
+        {
+            $linksToDisplay[$key]['taglist']=explode(' ',$link['tags']);
+            $linksToDisplay[$key]['formatedDescription']=nl2br(keepMultipleSpaces(text2clickable(htmlspecialchars($link['description']))));
+            $linksToDisplay[$key]['thumbnail'] = thumbnail($link['url']);
+        }
+        
+        /* We need to spread the articles on 3 columns.
+           I did not want to use a javascript lib like http://masonry.desandro.com/
+           so I manually spread entries with a simple method: I roughly evaluate the 
+           height of a div according to title and description length.
+        */
+        $columns=array(array(),array(),array()); // Entries to display, for each column.
+        $fill=array(0,0,0);  // Rough estimate of columns fill.
+        foreach($linksToDisplay as $key=>$link)
+        {
+            // Roughly estimate length of entry (by counting characters)
+            // Title: 30 chars = 1 line. 1 line is 30 pixels height.
+            // Description: 836 characters gives roughly 342 pixel height.
+            // This is not perfect, but it's usually ok.
+            $length=strlen($link['title'])+(342*strlen($link['description']))/836;
+            if ($link['thumbnail']) $length +=100; // 1 thumbnails roughly takes 100 pixels height.
+            // Then put in column which is the less filled:
+            $smallest=min($fill); // find smallest value in array.
+            $index=array_search($smallest,$fill); // find index of this smallest value.
+            array_push($columns[$index],$link); // Put entry in this column.
+            $fill[$index]+=$length;
+        }
+        $PAGE = new pageBuilder;
+        $PAGE->assign('linksToDisplay',$linksToDisplay);
+        $PAGE->assign('col1',$columns[0]);
+        $PAGE->assign('col2',$columns[1]);
+        $PAGE->assign('col3',$columns[2]);
+        $PAGE->assign('week',utf8_encode(strftime('%A %d, %B %Y',linkdate2timestamp($week.'_000000'))));
+        $PAGE->assign('previousweek',$previousweek);
+        $PAGE->assign('nextweek',$nextweek);
+        $PAGE->renderPage('weekly');
         exit;
     }
 

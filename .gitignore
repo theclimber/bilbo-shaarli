@@ -1,9 +1,3 @@
-<<<<<<< HEAD
 tmp/*
 data/*
 cache/*
-=======
-data/*
-cache/*
-tmp/*
->>>>>>> Adding support for weekly digest of links
