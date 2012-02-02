@@ -7,14 +7,15 @@
     <div class="dailyAbout">
       All links of one day<br>in a single page.<br>
       <a href="?do=daily&day={$previousday}"><b>&lt;</b>Previous day</a> - 
-      <a href="?do=daily&day={$nextday}">Next day<b>&gt;</b></a>
+      <a href="?do=daily&day={$nextday}">Next day<b>&gt;</b></a><br><br>
+	  <a href="?do=dailyrss" title="1 RSS entry per day"><img src="images/feed-icon-14x14.png#" width="14" height="14" style="position:relative;top:3px; margin-right:4px;">Daily RSS Feed</a>
     </div>
-    <div class="dailyTitle"><img src="../images/floral_left.png" width="51" height="50"> The Shaarli Daily <img src="../images/floral_right.png" width="51" height="50"></div>
-    <div class="dailyDate">&#x0097;&#x0097;&#x0097;&#x0097;&#x0097;&#x0097;&#x0097;&#x0097;&#x0097;&#x0097;&#x0097; {$day} &#x0097;&#x0097;&#x0097;&#x0097;&#x0097;&#x0097;&#x0097;&#x0097;&#x0097;&#x0097;&#x0097;</div>
+    <div class="dailyTitle"><img src="../images/floral_left.png" width="51" height="50" class="nomobile"> The Shaarli Daily <img src="../images/floral_right.png" width="51" height="50" class="nomobile"></div>
+    <div class="dailyDate"><span class="nomobile">&#x0097;&#x0097;&#x0097;&#x0097;&#x0097;&#x0097;&#x0097;&#x0097;&#x0097;&#x0097;&#x0097;</span> {$day} <span class="nomobile">&#x0097;&#x0097;&#x0097;&#x0097;&#x0097;&#x0097;&#x0097;&#x0097;&#x0097;&#x0097;&#x0097;</span></div>
     <div style="clear:both;"></div>
     
     {if="$linksToDisplay"}
-        <div style="float:left;position:relative; width:33%; padding-left:1%;">
+        <div id="daily_col1">
         {loop="col1"}
         <div class="dailyEntry">
             <div style="float:right;position:relative;top:-1px;"><a href="?{$value.linkdate|smallHash}"><img src="../images/squiggle2.png" width="25" height="26" title="permalink" alt="permalink"></a></div>
@@ -26,7 +27,7 @@
         {/loop}
         </div>
 
-        <div style="float:left;position:relative; width:33%;">
+        <div id="daily_col2">
         {loop="col2"}
         <div class="dailyEntry">
             <div style="float:right;position:relative;top:-1px;"><a href="?{$value.linkdate|smallHash}"><img src="../images/squiggle2.png" width="25" height="26" title="permalink" alt="permalink"></a></div>
@@ -38,7 +39,7 @@
         {/loop}
         </div>    
 
-        <div style="float:left;position:relative; width:33%;">
+        <div id="daily_col3">
         {loop="col3"}
         <div class="dailyEntry">
             <div style="float:right;position:relative;top:-1px;"><a href="?{$value.linkdate|smallHash}"><img src="../images/squiggle2.png" width="25" height="26" title="permalink" alt="permalink"></a></div>

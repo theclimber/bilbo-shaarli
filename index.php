@@ -1,5 +1,5 @@
 <?php
-// Shaarli 0.0.36 beta - Shaare your links...
+// Shaarli 0.0.37 beta - Shaare your links...
 // The personal, minimalist, super-fast, no-database delicious clone. By sebsauvage.net
 // http://sebsauvage.net/wiki/doku.php?id=php:shaarli
 // Licence: http://www.opensource.org/licenses/zlib-license.php
@@ -58,7 +58,7 @@ header("Last-Modified: " . gmdate("D, d M Y H:i:s") . " GMT");
 header("Cache-Control: no-store, no-cache, must-revalidate");
 header("Cache-Control: post-check=0, pre-check=0", false);
 header("Pragma: no-cache");
-define('shaarli_version','0.0.36 beta');
+define('shaarli_version','0.0.37 beta');
 if (!is_dir($GLOBALS['config']['DATADIR'])) { mkdir($GLOBALS['config']['DATADIR'],0705); chmod($GLOBALS['config']['DATADIR'],0705); }
 if (!is_file($GLOBALS['config']['DATADIR'].'/.htaccess')) { file_put_contents($GLOBALS['config']['DATADIR'].'/.htaccess',"Allow from none\nDeny from all\n"); } // Protect data files.
 if ($GLOBALS['config']['ENABLE_LOCALCACHE'])
@@ -153,8 +153,8 @@ function text2clickable($url)
 // even in the absence of <pre>  (This is used in description to keep text formatting)
 function keepMultipleSpaces($text)
 {
-	return str_replace('  ',' &nbsp;',$text);
-	
+    return str_replace('  ',' &nbsp;',$text);
+    
 }
 // ------------------------------------------------------------------------------------------
 // Sniff browser language to display dates in the right format automatically.
@@ -850,6 +850,75 @@ function showATOM()
 }
 
 // ------------------------------------------------------------------------------------------
+// Daily RSS feed: 1 RSS entry per day giving all the links on that day.
+// Gives the last 7 days (which have links).
+// This RSS feed cannot be filtered.
+function showDailyRSS()
+{
+    global $LINKSDB;
+    
+    /* Some Shaarlies may have very few links, so we need to look
+       back in time (rsort()) until we have enough days ($nb_of_days).
+    */
+    $linkdates=array(); foreach($LINKSDB as $linkdate=>$value) { $linkdates[]=$linkdate; } 
+    rsort($linkdates);
+    $nb_of_days=7; // We take 7 days.
+    $today=Date('Ymd');
+    $days=array();
+    foreach($linkdates as $linkdate)
+    {
+        $day=substr($linkdate,0,8); // Extract day (without time)
+        if (strcmp($day,$today)<0)
+        {
+            if (empty($days[$day])) $days[$day]=array();
+            $days[$day][]=$linkdate;
+        }
+        if (count($days)>$nb_of_days) break; // Have we collected enough days ?
+    }
+    
+    // Build the RSS feed.
+    header('Content-Type: application/rss+xml; charset=utf-8');
+    $pageaddr=htmlspecialchars(indexUrl());
+    echo '<?xml version="1.0" encoding="UTF-8"?><rss version="2.0">';
+    echo '<channel><title>Daily - '.htmlspecialchars($GLOBALS['title']).'</title><link>'.$pageaddr.'</link>';
+    echo '<description>Daily shared links</description><language>en-en</language><copyright>'.$pageaddr.'</copyright>'."\n";
+    
+    foreach($days as $day=>$linkdates) // For each day.
+    {
+        $daydate = utf8_encode(strftime('%A %d, %B %Y',linkdate2timestamp($day.'_000000'))); // Full text date
+        $rfc822date = linkdate2rfc822($day.'_000000');
+        $absurl=htmlspecialchars(indexUrl().'?do=daily&day='.$day);  // Absolute URL of the corresponding "Daily" page.
+        echo '<item><title>'.htmlspecialchars($GLOBALS['title'].' - '.$daydate).'</title><guid>'.$absurl.'</guid><link>'.$absurl.'</link>';
+        echo '<pubDate>'.htmlspecialchars($rfc822date)."</pubDate>";
+        
+        // Build the HTML body of this RSS entry.
+        $html='';
+        $href='';
+        $links=array();
+        // We pre-format some fields for proper output.
+        foreach($linkdates as $linkdate)
+        {
+            $l = $LINKSDB[$linkdate];
+            $l['formatedDescription']=nl2br(keepMultipleSpaces(text2clickable(htmlspecialchars($l['description']))));
+            $l['thumbnail'] = thumbnail($l['url']);  
+            $l['localdate']=linkdate2locale($l['linkdate']);            
+            if (startsWith($l['url'],'?')) $l['url']=indexUrl().$l['url'];  // make permalink URL absolute
+            $links[$linkdate]=$l;    
+        }
+        // Then build the HTML for this day:
+        $tpl = new RainTPL;    
+        $tpl->assign('links',$links);
+        $html = $tpl->draw('dailyrss',$return_string=true);
+        echo "\n";
+        echo '<description><![CDATA['.$html.']]></description>'."\n</item>\n\n";
+
+    }    
+    echo '</channel></rss>';
+    exit;
+}
+
+
+// ------------------------------------------------------------------------------------------
 // Render HTML page (according to URL parameters and user rights)
 function renderPage()
 {
@@ -861,7 +930,7 @@ function renderPage()
         if ($GLOBALS['config']['OPEN_SHAARLI']) { header('Location: ?'); exit; }  // No need to login for open Shaarli
         $token=''; if (ban_canLogin()) $token=getToken(); // Do not waste token generation if not useful.
         $PAGE = new pageBuilder;
-	    $PAGE->assign('token',$token);
+        $PAGE->assign('token',$token);
         $PAGE->assign('returnurl',(isset($_SERVER['HTTP_REFERER']) ? $_SERVER['HTTP_REFERER']:''));
         $PAGE->renderPage('loginform');
         exit;
@@ -890,17 +959,17 @@ function renderPage()
         foreach($links as $link)
         {
             $permalink='?'.htmlspecialchars(smallhash($link['linkdate']),ENT_QUOTES);
-            $thumb=thumbnail($link['url'],$permalink);
+            $thumb=lazyThumbnail($link['url'],$permalink);
             if ($thumb!='') // Only output links which have a thumbnail.
             {
-	            $link['thumbnail']=$thumb; // Thumbnail HTML code.
-	            $link['permalink']=$permalink;
-	            $linksToDisplay[]=$link; // Add to array.
+                $link['thumbnail']=$thumb; // Thumbnail HTML code.
+                $link['permalink']=$permalink;
+                $linksToDisplay[]=$link; // Add to array.
             }
         }
         $PAGE = new pageBuilder;
-	    $PAGE->assign('linksToDisplay',$linksToDisplay);
-	    $PAGE->renderPage('picwall');
+        $PAGE->assign('linksToDisplay',$linksToDisplay);
+        $PAGE->renderPage('picwall');
         exit;
     }
 
@@ -915,12 +984,12 @@ function renderPage()
         $tagList=array();
         foreach($tags as $key=>$value)
         {
-	        $tagList[$key] = array('count'=>$value,'size'=>max(40*$value/$maxcount,8));
+            $tagList[$key] = array('count'=>$value,'size'=>max(40*$value/$maxcount,8));
         }
         $PAGE = new pageBuilder;
-	    $PAGE->assign('tags',$tagList);
-	    $PAGE->renderPage('tagcloud');
-        exit;	
+        $PAGE->assign('tags',$tagList);
+        $PAGE->renderPage('tagcloud');
+        exit;    
     }
 
     // -------- User clicks on a tag in a link: The tag is added to the list of searched tags (searchtags=...)
@@ -956,6 +1025,21 @@ function renderPage()
     if (isset($_GET['linksperpage']))
     {
         if (is_numeric($_GET['linksperpage'])) { $_SESSION['LINKS_PER_PAGE']=abs(intval($_GET['linksperpage'])); }
+        header('Location: '.(empty($_SERVER['HTTP_REFERER'])?'?':$_SERVER['HTTP_REFERER']));
+        exit;
+    }
+    
+    // -------- User wants to see only private links (toggle)
+    if (isset($_GET['privateonly']))
+    {
+        if (empty($_SESSION['privateonly']))
+        {
+            $_SESSION['privateonly']=1; // See only private links
+        }
+        else
+        {
+            unset($_SESSION['privateonly']); // See all links
+        }
         header('Location: '.(empty($_SERVER['HTTP_REFERER'])?'?':$_SERVER['HTTP_REFERER']));
         exit;
     }
@@ -1000,7 +1084,7 @@ function renderPage()
             $fill[$index]+=$length;
         }
         $PAGE = new pageBuilder;
-	    $PAGE->assign('linksToDisplay',$linksToDisplay);
+        $PAGE->assign('linksToDisplay',$linksToDisplay);
         $PAGE->assign('col1',$columns[0]);
         $PAGE->assign('col2',$columns[1]);
         $PAGE->assign('col3',$columns[2]);
@@ -1021,10 +1105,10 @@ function renderPage()
             header('Location: ?do=login&post='.urlencode($_GET['post']).(!empty($_GET['title'])?'&title='.urlencode($_GET['title']):'').(!empty($_GET['source'])?'&source='.urlencode($_GET['source']):'')); // Redirect to login page, then back to post link.
             exit;
         }
-	    $PAGE = new pageBuilder;
-	    buildLinkList($PAGE); // Compute list of links to display
-	    $PAGE->renderPage('linklist');
-	    exit; // Never remove this one ! All operations below are reserved for logged in user.
+        $PAGE = new pageBuilder;
+        buildLinkList($PAGE); // Compute list of links to display
+        $PAGE->renderPage('linklist');
+        exit; // Never remove this one ! All operations below are reserved for logged in user.
     }
 
     // -------- All other functions are reserved for the registered user:
@@ -1032,9 +1116,9 @@ function renderPage()
     // -------- Display the Tools menu if requested (import/export/bookmarklet...)
     if (isset($_SERVER["QUERY_STRING"]) && startswith($_SERVER["QUERY_STRING"],'do=tools'))
     {
-	    $PAGE = new pageBuilder;
-	    $PAGE->assign('pageabsaddr',indexUrl());
-	    $PAGE->renderPage('tools');
+        $PAGE = new pageBuilder;
+        $PAGE->assign('pageabsaddr',indexUrl());
+        $PAGE->renderPage('tools');
         exit;
     }
 
@@ -1058,10 +1142,10 @@ function renderPage()
         }
         else // show the change password form.
         {
-		    $PAGE = new pageBuilder;
-		    $PAGE->assign('token',getToken());
-		    $PAGE->renderPage('changepassword');
-	        exit;
+            $PAGE = new pageBuilder;
+            $PAGE->assign('token',getToken());
+            $PAGE->renderPage('changepassword');
+            exit;
         }
     }
 
@@ -1084,15 +1168,15 @@ function renderPage()
         }
         else // Show the configuration form.
         {
-	        $PAGE = new pageBuilder;
+            $PAGE = new pageBuilder;
             $PAGE->assign('token',getToken());
             $PAGE->assign('title',htmlspecialchars( empty($GLOBALS['title']) ? '' : $GLOBALS['title'] , ENT_QUOTES));
             $PAGE->assign('redirector',htmlspecialchars( empty($GLOBALS['redirector']) ? '' : $GLOBALS['redirector'] , ENT_QUOTES));
             list($timezone_form,$timezone_js) = templateTZform($GLOBALS['timezone']);
             $PAGE->assign('timezone_form',$timezone_form); // FIXME: put entire tz form generation in template ?
             $PAGE->assign('timezone_js',$timezone_js);
-		    $PAGE->renderPage('configure');
-	        exit;
+            $PAGE->renderPage('configure');
+            exit;
         }
     }
 
@@ -1101,10 +1185,10 @@ function renderPage()
     {
         if (empty($_POST['fromtag']))
         {
-	        $PAGE = new pageBuilder;
-		    $PAGE->assign('token',getToken());
-		    $PAGE->renderPage('changetag');
-	        exit;
+            $PAGE = new pageBuilder;
+            $PAGE->assign('token',getToken());
+            $PAGE->renderPage('changetag');
+            exit;
         }
         if (!tokenOk($_POST['token'])) die('Wrong token.');
 
@@ -1148,8 +1232,8 @@ function renderPage()
     // -------- User wants to add a link without using the bookmarklet: show form.
     if (isset($_SERVER["QUERY_STRING"]) && startswith($_SERVER["QUERY_STRING"],'do=addlink'))
     {
-	    $PAGE = new pageBuilder;
-	    $PAGE->renderPage('addlink');
+        $PAGE = new pageBuilder;
+        $PAGE->renderPage('addlink');
         exit;
     }
 
@@ -1207,12 +1291,12 @@ function renderPage()
     {
         $link = $LINKSDB[$_GET['edit_link']];  // Read database
         if (!$link) { header('Location: ?'); exit; } // Link not found in database.
-	    $PAGE = new pageBuilder;
-	    $PAGE->assign('link',$link);
-	    $PAGE->assign('link_is_new',false);
-	    $PAGE->assign('token',getToken()); // XSRF protection.
-	    $PAGE->assign('http_referer',(isset($_SERVER['HTTP_REFERER']) ? $_SERVER['HTTP_REFERER'] : ''));
-	    $PAGE->renderPage('editlink');
+        $PAGE = new pageBuilder;
+        $PAGE->assign('link',$link);
+        $PAGE->assign('link_is_new',false);
+        $PAGE->assign('token',getToken()); // XSRF protection.
+        $PAGE->assign('http_referer',(isset($_SERVER['HTTP_REFERER']) ? $_SERVER['HTTP_REFERER'] : ''));
+        $PAGE->renderPage('editlink');
         exit;
     }
 
@@ -1246,12 +1330,12 @@ function renderPage()
             $link = array('linkdate'=>$linkdate,'title'=>$title,'url'=>$url,'description'=>$description,'tags'=>$tags,'private'=>0);
         }
 
-	    $PAGE = new pageBuilder;
-	    $PAGE->assign('link',$link);
-	    $PAGE->assign('link_is_new',$link_is_new);
-	    $PAGE->assign('token',getToken()); // XSRF protection.
-	    $PAGE->assign('http_referer',(isset($_SERVER['HTTP_REFERER']) ? $_SERVER['HTTP_REFERER'] : ''));
-	    $PAGE->renderPage('editlink');
+        $PAGE = new pageBuilder;
+        $PAGE->assign('link',$link);
+        $PAGE->assign('link_is_new',$link_is_new);
+        $PAGE->assign('token',getToken()); // XSRF protection.
+        $PAGE->assign('http_referer',(isset($_SERVER['HTTP_REFERER']) ? $_SERVER['HTTP_REFERER'] : ''));
+        $PAGE->renderPage('editlink');
         exit;
     }
 
@@ -1260,9 +1344,9 @@ function renderPage()
     {
         if (empty($_GET['what']))
         {
-		    $PAGE = new pageBuilder;
-		    $PAGE->renderPage('export');
-	        exit;
+            $PAGE = new pageBuilder;
+            $PAGE->renderPage('export');
+            exit;
         }
         $exportWhat=$_GET['what'];
         if (!array_intersect(array('all','public','private'),array($exportWhat))) die('What are you trying to export ???');
@@ -1313,10 +1397,10 @@ HTML;
     // -------- Show upload/import dialog:
     if (isset($_SERVER["QUERY_STRING"]) && startswith($_SERVER["QUERY_STRING"],'do=import'))
     {
-	    $PAGE = new pageBuilder;
+        $PAGE = new pageBuilder;
         $PAGE->assign('token',getToken());
         $PAGE->assign('maxfilesize',getMaxFileSize());
-	    $PAGE->renderPage('import');
+        $PAGE->renderPage('import');
         exit;
     }
 
@@ -1430,14 +1514,24 @@ function buildLinkList($PAGE)
         $search_crits=explode(' ',trim($_GET['searchtags']));
         $search_type='tags';
     }
-    elseif (isset($_SERVER["QUERY_STRING"]) && preg_match('/[a-zA-Z0-9-_@]{6}(&.+?)?/',$_SERVER["QUERY_STRING"])) // Detect smallHashes in URL
+    elseif (isset($_SERVER['QUERY_STRING']) && preg_match('/[a-zA-Z0-9-_@]{6}(&.+?)?/',$_SERVER['QUERY_STRING'])) // Detect smallHashes in URL
     {
         $linksToDisplay = $LINKSDB->filterSmallHash(substr(trim($_SERVER["QUERY_STRING"], '/'),0,6));
         $search_type='permalink';
     }
     else
         $linksToDisplay = $LINKSDB;  // otherwise, display without filtering.
-        
+    
+    // Option: Show only private links
+    if (!empty($_SESSION['privateonly']))
+    {
+        $tmp = array();
+        foreach($linksToDisplay as $linkdate=>$link)
+        {
+            if ($link['private']!=0) $tmp[$linkdate]=$link;
+        }
+        $linksToDisplay=$tmp;
+    }
 
     // ---- Handle paging.
     /* Can someone explain to me why you get the following error when using array_keys() on an object which implements the interface ArrayAccess ???
@@ -1494,16 +1588,18 @@ function buildLinkList($PAGE)
     return;
 }
 
-// Returns the HTML code to display a thumbnail for a link
+// Compute the thumbnail for a link.
+// 
 // with a link to the original URL.
 // Understands various services (youtube.com...)
 // Input: $url = url for which the thumbnail must be found.
 //        $href = if provided, this URL will be followed instead of $url
-// Returns '' if no thumbnail available.
-function thumbnail($url,$href=false)
+// Returns an associative array with thumbnail attributes (src,href,width,height,style,alt)
+// Some of them may be missing.
+// Return an empty array if no thumbnail available.
+function computeThumbnail($url,$href=false)
 {
-    if (!$GLOBALS['config']['ENABLE_THUMBNAILS']) return '';
-
+    if (!$GLOBALS['config']['ENABLE_THUMBNAILS']) return array();
     if ($href==false) $href=$url;
 
     // For most hosts, the URL of the thumbnail can be easily deduced from the URL of the link.
@@ -1513,38 +1609,47 @@ function thumbnail($url,$href=false)
     if ($domain=='youtube.com' || $domain=='www.youtube.com')
     {
         parse_str(parse_url($url,PHP_URL_QUERY), $params); // Extract video ID and get thumbnail
-        if (!empty($params['v'])) return '<a href="'.htmlspecialchars($href).'"><img src="http://img.youtube.com/vi/'.htmlspecialchars($params['v']).'/default.jpg" width="120" height="90" alt="YouTube thumbnail"></a>';
+        if (!empty($params['v'])) return array('src'=>'http://img.youtube.com/vi/'.$params['v'].'/default.jpg',
+                                               'href'=>$href,'width'=>'120','height'=>'90','alt'=>'YouTube thumbnail');
     }
     if ($domain=='youtu.be') // Youtube short links
     {
         $path = parse_url($url,PHP_URL_PATH);
-        return '<a href="'.htmlspecialchars($href).'"><img src="http://img.youtube.com/vi'.htmlspecialchars($path).'/default.jpg" width="120" height="90"  alt="YouTube thumbnail"></a>';
+        return array('src'=>'http://img.youtube.com/vi'.$path.'/default.jpg',
+                     'href'=>$href,'width'=>'120','height'=>'90','alt'=>'YouTube thumbnail');        
     }
     if ($domain=='pix.toile-libre.org') // pix.toile-libre.org image hosting
     {
         parse_str(parse_url($url,PHP_URL_QUERY), $params); // Extract image filename.
-        if (!empty($params) && !empty($params['img'])) return '<a href="'.htmlspecialchars($href).'"><img src="http://pix.toile-libre.org/upload/thumb/'.urlencode($params['img']).'" style:"max-width:120px; max-height:150px" alt="pix.toile-libre.org thumbnail"></a>';
+        if (!empty($params) && !empty($params['img'])) return array('src'=>'http://pix.toile-libre.org/upload/thumb/'.urlencode($params['img']),
+                                                                    'href'=>$href,'style'=>'max-width:120px; max-height:150px','alt'=>'pix.toile-libre.org thumbnail');    
     }    
     
     if ($domain=='imgur.com')
     {
         $path = parse_url($url,PHP_URL_PATH);
-        if (startsWith($path,'/a/')) return ''; // Thumbnails for albums are not available.
-        if (startsWith($path,'/r/')) return '<a href="'.htmlspecialchars($href).'"><img src="http://i.imgur.com/'.htmlspecialchars(basename($path)).'s.jpg" width="90" height="90" alt="imgur.com thumbnail"></a>';
-        if (startsWith($path,'/gallery/')) return '<a href="'.htmlspecialchars($href).'"><img src="http://i.imgur.com'.htmlspecialchars(substr($path,8)).'s.jpg" width="90" height="90" alt="imgur.com thumbnail"></a>';
-        if (substr_count($path,'/')==1) return '<a href="'.htmlspecialchars($href).'"><img src="http://i.imgur.com/'.htmlspecialchars(substr($path,1)).'s.jpg" width="90" height="90" alt="imgur.com thumbnail"></a>';
+        if (startsWith($path,'/a/')) return array(); // Thumbnails for albums are not available.
+        if (startsWith($path,'/r/')) return array('src'=>'http://i.imgur.com/'.basename($path).'s.jpg',
+                                                  'href'=>$href,'width'=>'90','height'=>'90','alt'=>'imgur.com thumbnail');
+        if (startsWith($path,'/gallery/')) return array('src'=>'http://i.imgur.com'.substr($path,8).'s.jpg',
+                                                        'href'=>$href,'width'=>'90','height'=>'90','alt'=>'imgur.com thumbnail');
+
+        if (substr_count($path,'/')==1) return array('src'=>'http://i.imgur.com/'.substr($path,1).'s.jpg',
+                                                     'href'=>$href,'width'=>'90','height'=>'90','alt'=>'imgur.com thumbnail');
     }
     if ($domain=='i.imgur.com')
     {
         $pi = pathinfo(parse_url($url,PHP_URL_PATH));
-        if (!empty($pi['filename'])) return '<a href="'.htmlspecialchars($href).'"><img src="http://i.imgur.com/'.htmlspecialchars($pi['filename']).'s.jpg" width="90" height="90" alt="imgur.com thumbnail"></a>';
+        if (!empty($pi['filename'])) return array('src'=>'http://i.imgur.com/'.$pi['filename'].'s.jpg',
+                                                  'href'=>$href,'width'=>'90','height'=>'90','alt'=>'imgur.com thumbnail');
     }
     if ($domain=='dailymotion.com' || $domain=='www.dailymotion.com')
     {
         if (strpos($url,'dailymotion.com/video/')!==false)
         {
             $thumburl=str_replace('dailymotion.com/video/','dailymotion.com/thumbnail/video/',$url);
-            return '<a href="'.htmlspecialchars($href).'"><img src="'.htmlspecialchars($thumburl).'" width="120" style="height:auto;" alt="DailyMotion thumbnail"></a>';
+            return array('src'=>$thumburl,
+                         'href'=>$href,'width'=>'120','style'=>'height:auto;','alt'=>'DailyMotion thumbnail');
         }
     }
     if (endsWith($domain,'.imageshack.us'))
@@ -1553,7 +1658,8 @@ function thumbnail($url,$href=false)
         if ($ext=='jpg' || $ext=='jpeg' || $ext=='png' || $ext=='gif')
         {
             $thumburl = substr($url,0,strlen($url)-strlen($ext)).'th.'.$ext;
-            return '<a href="'.htmlspecialchars($href).'"><img src="'.htmlspecialchars($thumburl).'" width="120" style="height:auto;" alt="imageshack.us thumbnail"></a>';
+            return array('src'=>$thumburl,
+                         'href'=>$href,'width'=>'120','style'=>'height:auto;','alt'=>'imageshack.us thumbnail');
         }
     }
 
@@ -1561,7 +1667,7 @@ function thumbnail($url,$href=false)
     // So we deport the thumbnail generation in order not to slow down page generation
     // (and we also cache the thumbnail)
 
-    if (!$GLOBALS['config']['ENABLE_LOCALCACHE']) return ''; // If local cache is disabled, no thumbnails for services which require the use a local cache.
+    if (!$GLOBALS['config']['ENABLE_LOCALCACHE']) return array(); // If local cache is disabled, no thumbnails for services which require the use a local cache.
 
     if ($domain=='flickr.com' || endsWith($domain,'.flickr.com')
         || $domain=='vimeo.com'
@@ -1572,20 +1678,21 @@ function thumbnail($url,$href=false)
         if ($domain=='vimeo.com')
         {   // Make sure this vimeo url points to a video (/xxx... where xxx is numeric)
             $path = parse_url($url,PHP_URL_PATH);
-            if (!preg_match('!/\d+.+?!',$path)) return ''; // This is not a single video URL.
+            if (!preg_match('!/\d+.+?!',$path)) return array(); // This is not a single video URL.
         }
         if ($domain=='xkcd.com' || endsWith($domain,'.xkcd.com'))
         {   // Make sure this url points to a single comic (/xxx... where xxx is numeric)
             $path = parse_url($url,PHP_URL_PATH);
-            if (!preg_match('!/\d+.+?!',$path)) return '';
+            if (!preg_match('!/\d+.+?!',$path)) return array();
         }
         if ($domain=='ted.com' || endsWith($domain,'.ted.com'))
         {   // Make sure this TED url points to a video (/talks/...)
             $path = parse_url($url,PHP_URL_PATH);
-            if ("/talks/" !== substr($path,0,7)) return ''; // This is not a single video URL.
+            if ("/talks/" !== substr($path,0,7)) return array(); // This is not a single video URL.
         }
         $sign = hash_hmac('sha256', $url, $GLOBALS['salt']); // We use the salt to sign data (it's random, secret, and specific to each installation)
-        return '<a href="'.htmlspecialchars($href).'"><img src="?do=genthumbnail&hmac='.htmlspecialchars($sign).'&url='.urlencode($url).'" width="120" style="height:auto;" alt="thumbnail"></a>';
+        return array('src'=>indexUrl().'?do=genthumbnail&hmac='.htmlspecialchars($sign).'&url='.urlencode($url),
+                     'href'=>$href,'width'=>'120','style'=>'height:auto;','alt'=>'thumbnail');
     }
 
     // For all other, we try to make a thumbnail of links ending with .jpg/jpeg/png/gif
@@ -1595,11 +1702,67 @@ function thumbnail($url,$href=false)
     if ($ext=='jpg' || $ext=='jpeg' || $ext=='png' || $ext=='gif')
     {
         $sign = hash_hmac('sha256', $url, $GLOBALS['salt']); // We use the salt to sign data (it's random, secret, and specific to each installation)
-        return '<a href="'.htmlspecialchars($href).'"><img src="?do=genthumbnail&hmac='.htmlspecialchars($sign).'&url='.urlencode($url).'" width="120" style="height:auto;"></a>';
+        return array('src'=>indexUrl().'?do=genthumbnail&hmac='.htmlspecialchars($sign).'&url='.urlencode($url),
+                     'href'=>$href,'width'=>'120','style'=>'height:auto;','alt'=>'thumbnail');        
     }
-    return ''; // No thumbnail.
+    return array(); // No thumbnail.
 
 }
+
+
+// Returns the HTML code to display a thumbnail for a link
+// with a link to the original URL.
+// Understands various services (youtube.com...)
+// Input: $url = url for which the thumbnail must be found.
+//        $href = if provided, this URL will be followed instead of $url
+// Returns '' if no thumbnail available.
+function thumbnail($url,$href=false)
+{
+    $t = computeThumbnail($url,$href);
+    if (count($t)==0) return ''; // Empty array = no thumbnail for this URL.
+    
+    $html='<a href="'.htmlspecialchars($t['href']).'"><img src="'.htmlspecialchars($t['src']).'"';
+    if (!empty($t['width']))  $html.=' width="'.htmlspecialchars($t['width']).'"';
+    if (!empty($t['height'])) $html.=' height="'.htmlspecialchars($t['height']).'"';
+    if (!empty($t['style']))  $html.=' style="'.htmlspecialchars($t['style']).'"';
+    if (!empty($t['alt']))    $html.=' alt="'.htmlspecialchars($t['alt']).'"';
+    $html.='></a>';
+    return $html;
+}
+
+
+// Returns the HTML code to display a thumbnail for a link
+// for the picture wall (using lazy image loading)
+// Understands various services (youtube.com...)
+// Input: $url = url for which the thumbnail must be found.
+//        $href = if provided, this URL will be followed instead of $url
+// Returns '' if no thumbnail available.
+function lazyThumbnail($url,$href=false)
+{
+    $t = computeThumbnail($url,$href); 
+    if (count($t)==0) return ''; // Empty array = no thumbnail for this URL.
+
+    $html='<a href="'.htmlspecialchars($t['href']).'">';
+    
+    // Lazy image (only loaded by javascript when in the viewport).
+    $html.='<img class="lazyimage" src="#" data-original="'.htmlspecialchars($t['src']).'"';
+    if (!empty($t['width']))  $html.=' width="'.htmlspecialchars($t['width']).'"';
+    if (!empty($t['height'])) $html.=' height="'.htmlspecialchars($t['height']).'"';
+    if (!empty($t['style']))  $html.=' style="'.htmlspecialchars($t['style']).'"';
+    if (!empty($t['alt']))    $html.=' alt="'.htmlspecialchars($t['alt']).'"';
+    $html.='>';
+    
+    // No-javascript fallback:
+    $html.='<noscript><img src="'.htmlspecialchars($t['src']).'"';
+    if (!empty($t['width']))  $html.=' width="'.htmlspecialchars($t['width']).'"';
+    if (!empty($t['height'])) $html.=' height="'.htmlspecialchars($t['height']).'"';
+    if (!empty($t['style']))  $html.=' style="'.htmlspecialchars($t['style']).'"';
+    if (!empty($t['alt']))    $html.=' alt="'.htmlspecialchars($t['alt']).'"';
+    $html.='></noscript></a>';
+    
+    return $html;
+}
+
 
 // -----------------------------------------------------------------------------------------------
 // Installation
@@ -1861,11 +2024,11 @@ function genThumbnail()
         // The thumbnail for TED talks is located in the <link rel="image_src" [...]> tag on that page
         // http://www.ted.com/talks/mikko_hypponen_fighting_viruses_defending_the_net.html
         // <link rel="image_src" href="http://images.ted.com/images/ted/28bced335898ba54d4441809c5b1112ffaf36781_389x292.jpg" />
-        list($httpstatus,$headers,$data) = getHTTP($url,5);
+        list($httpstatus,$headers,$data) = getHTTP($url,5); 
         if (strpos($httpstatus,'200 OK')!==false)
         {
             // Extract the link to the thumbnail
-            preg_match('!link rel="image_src" href="(http://images.ted.com/images/ted/.+_\d+x\d+\.jpg)[^s]!',$data,$matches);
+            preg_match('!link rel="image_src" href="(http://images.ted.com/images/ted/.+_\d+x\d+\.jpg)"!',$data,$matches);
             if (!empty($matches[1]))
             {   // Let's download the image.
                 $imageurl=$matches[1];
@@ -1982,6 +2145,7 @@ if (isset($_SERVER["QUERY_STRING"]) && startswith($_SERVER["QUERY_STRING"],'do=g
 $LINKSDB=new linkdb(isLoggedIn() || $GLOBALS['config']['OPEN_SHAARLI']);  // Read links from database (and filter private links if used it not logged in).
 if (isset($_SERVER["QUERY_STRING"]) && startswith($_SERVER["QUERY_STRING"],'ws=')) { processWS(); exit; } // Webservices (for jQuery/jQueryUI)
 if (!isset($_SESSION['LINKS_PER_PAGE'])) $_SESSION['LINKS_PER_PAGE']=$GLOBALS['config']['LINKS_PER_PAGE'];
+if (isset($_SERVER["QUERY_STRING"]) && startswith($_SERVER["QUERY_STRING"],'do=dailyrss')) { showDailyRSS(); exit; }
 if (isset($_SERVER["QUERY_STRING"]) && startswith($_SERVER["QUERY_STRING"],'do=rss')) { showRSS(); exit; }
 if (isset($_SERVER["QUERY_STRING"]) && startswith($_SERVER["QUERY_STRING"],'do=atom')) { showATOM(); exit; }
 renderPage();

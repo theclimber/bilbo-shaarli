@@ -184,6 +184,12 @@ cursor:pointer;
 .paging a:visited { color:#ccc;  }
 .paging a:hover {  color:#FFFFC9;  }
 .paging a:active { color:#fff;  }
+#paging_privatelinks { float:left; }
+#paging_linksperpage { float:right; padding-right:5px; }
+#paging_current { display:inline; color:#fff; padding:0 20 0 20; }
+#paging_older { margin-right:15px; }
+#paging_newer { margin-left:15px; }
+
 #headerform { color:#ffffff; padding:5px 5px 5px 5px; clear: both;}
 #toolsdiv { color:#ffffff; padding:5px 5px 5px 5px; clear:left; }
 #uploaddiv { color:#ffffff; padding:5px 5px 5px 5px; clear:left; }
@@ -325,6 +331,11 @@ div.daily
     position:relative;
     border-bottom: 2px solid black;
 }
+
+#daily_col1 { float:left;position:relative; width:33%; padding-left:1%; }
+#daily_col2 { float:left;position:relative; width:33%; }
+#daily_col3 { float:left;position:relative; width:33%;}
+
 div.dailyAbout
 { 
     float:left;
@@ -383,6 +394,11 @@ div.dailyEntryDescription
 	clear:both;
 }
 
+/* For lazy images loading in picture wall.
+   using http://www.appelsiini.net/projects/lazyload 
+ */
+.lazyimage { display:none; }
+
 @media print {
 html {border:none;background:#fff!important;color:#000!important;}
 body {font-size:12pt;width:auto!important;margin:auto!important;}
@@ -397,3 +413,36 @@ a {color:#000!important;text-decoration:none!important;}
 .linktag { border: 1px solid black; font-style:italic;  font-size:8pt;}
 
 }
+
+
+@media handheld, only screen and (max-width: 480px), only screen and (max-device-width: 854px)
+{
+/* A few fixes for mobile devices (far from perfect). */
+.nomobile  { display:none; }
+#logo { display:none; }
+#pageheader a
+{
+	padding:5px;
+	border-radius: 5px 5px 5px 5px;
+	margin:3px;
+}
+.searchform,.tagfilter  { display:block !important; margin:0px !important; padding:0px !important; width:100% !important; }
+.searchform input,.tagfilter input  { margin:0px !important; padding:0px !important; display:inline !important; }
+.tagfilter input.bigbutton,.searchform input.bigbutton,.addform input.bigbutton{  width:30%; font-size:smaller;}
+#searchform_value { width:70% !important; }
+#tagfilter_value { width:70% !important; }
+div.qrcode { position:relative; float:left; top:-10px; left:0px; }
+#paging_privatelinks { float;none; }
+#paging_linksperpage { float:none; margin-bottom:10px; font-size:smaller;}
+#paging_older,#paging_newer,#paging_linksperpage a { border: 1px solid black; padding:3px 5px 3px 5px; background-color:#666; color:#fff; border-radius: 5px 5px 5px 5px;}
+.thumbnail { float:none; height:auto; margin: 0px; text-align:center;}
+#cloudtag  { padding:0px; }
+div.dailyAbout {  float:none; position:relative; width:100%; clear:both; padding:0px; top:0px; left:0px; }
+#daily_col1,#daily_col2,#daily_col3 { float:none; width:100%; padding:0px;}
+div.dailyTitle  { font-size: 18pt; margin-top:5px; padding:0px;}
+div.dailyDate  {  font-size: 11pt;padding:0px; display:block; }
+div.dailyEntryTitle { font-size:16pt; font-weight:bold;}
+div.dailyEntryDescription { font-size:10pt; }
+
+} 
+

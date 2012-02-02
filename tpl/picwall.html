@@ -1,6 +1,8 @@
 <!DOCTYPE html>
 <html>
-<head>{include="includes"}</head>
+<head>{include="includes"}
+<script src="inc/jquery.lazyload.min.js#"></script>
+</head>
 <body>
 <div id="pageheader">{include="page.header"}</div>
 <center>
@@ -14,4 +16,9 @@
 </center>
 {include="page.footer"}
 </body>
+<script>
+$(document).ready(function() {
+    $("img.lazyimage").show().lazyload();
+});
+</script>
 </html>
