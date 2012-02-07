@@ -1155,7 +1155,7 @@ function showDaily()
 
 
 // Weekly RSS feed: 1 RSS entry per week giving all the links on that week.
-// Gives the last 7 weeks (which have links).
+// Gives the last 7 weeks (which have links) and is published every monday
 // This RSS feed cannot be filtered.
 function showWeeklyRSS()
 {
@@ -1193,8 +1193,8 @@ function showWeeklyRSS()
     header('Content-Type: application/rss+xml; charset=utf-8');
     $pageaddr=htmlspecialchars(indexUrl());
     echo '<?xml version="1.0" encoding="UTF-8"?><rss version="2.0">';
-    echo '<channel><title>Weekly - '.htmlspecialchars($GLOBALS['title']).'</title><link>'.$pageaddr.'</link>';
-    echo '<description>Weekly shared links</description><language>en-en</language><copyright>'.$pageaddr.'</copyright>'."\n";
+    echo '<channel><title>Hebdomadaire - '.htmlspecialchars($GLOBALS['title']).'</title><link>'.$pageaddr.'</link>';
+    echo '<description>Liens partagés de la semaine</description><language>fr-fr</language><copyright>'.$pageaddr.'</copyright>'."\n";
     
     foreach($weeks as $week=>$linkdates) // For each week.
     {
