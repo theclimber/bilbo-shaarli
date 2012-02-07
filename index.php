@@ -242,7 +242,9 @@ function autoLocale()
     {   // (It's a bit crude, but it works very well. Prefered language is always presented first.)
         if (preg_match('/([a-z]{2}(-[a-z]{2})?)/i',$_SERVER['HTTP_ACCEPT_LANGUAGE'],$matches)) $loc=$matches[1];
     }
+    $loc = 'fr_FR';
     setlocale(LC_TIME,$loc);  // LC_TIME = Set local for date/time format only.
+    putenv('LC_TIME='.$loc);
 }
 
 // ------------------------------------------------------------------------------------------
