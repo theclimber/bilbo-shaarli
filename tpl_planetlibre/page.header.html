@@ -6,16 +6,13 @@
 {if="!empty($_GET['source']) && $_GET['source']=='bookmarklet'"}
     {ignore} When called as a popup from bookmarklet, do not display menu. {/ignore}
 {else}
-    <a href="?" class="nomobile">Accueil</a>
     {if="isLoggedIn()"}
-        <a href="?do=logout">Logout</a><a href="?do=tools">Outils</a><a href="?do=addlink"><b>Ajouter un lien</b></a>
+        <a href="?do=logout">Déconnexion</a><a href="?do=tools">Outils</a><a href="?do=addlink"><b>Ajouter un lien</b></a>
     {elseif="$GLOBALS['config']['OPEN_SHAARLI']"}
         <a href="?do=tools">Outils</a><a href="?do=addlink"><b>Ajouter un lien</b></a>
     {else}
         <a href="?do=login">Identification</a>
     {/if}
-    <a href="{$feedurl}?do=rss{$searchcrits}" class="nomobile">Flux RSS</a>
-    <a href="{$feedurl}?do=atom{$searchcrits}" style="padding-left:10px;" class="nomobile">Flux Atom</a>
     <a href="?do=tagcloud">Nuage de tags</a>
     <a href="?do=picwall{$searchcrits}">Mur de photos</a>
     <a href="?do=daily">Quotidien</a>
