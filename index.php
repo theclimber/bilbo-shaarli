@@ -1316,8 +1316,8 @@ function showMonthlyRSS()
 }
 
 
-// Daily RSS feed: 1 RSS entry per week giving all the links on that week.
-// Gives the last 7 weeks (which have links).
+// Weekly RSS feed: 1 RSS entry per week giving all the links on that week.
+// Gives the last 7 weeks (which have links) and is published every monday
 // This RSS feed cannot be filtered.
 function showWeeklyRSS()
 {
@@ -1325,37 +1325,32 @@ function showWeeklyRSS()
     
     /* Some Shaarlies may have very few links, so we need to look
        back in time (rsort()) until we have enough weeks ($nb_of_weeks).
-	 */
-	$day_to_publish = 1;  // 1 (for Monday) through 7 (for Sunday)
+     */
+    $day_to_publish = 1;  // 1 (for Monday) through 7 (for Sunday)
     $linkdates=array(); foreach($LINKSDB as $linkdate=>$value) { $linkdates[]=$linkdate; } 
     rsort($linkdates);
     $nb_of_weeks=7; // We take 7 weeks.
-//    $today=Date('Ymd');
-	$day_of_the_week=Date('N') - $day_to_publish;
-	$last_published = Date('Ymd',time() - 3600*24*$day_of_the_week); // one week ago
+    $day_of_the_week=Date('N') - $day_to_publish;
+    $last_published = Date('Ymd',time() - 3600*24*$day_of_the_week); // one week ago
     $weeks=array();
     foreach($linkdates as $linkdate)
     {
-		$linktime = mktime(0,0,0, substr($linkdate,4,2), substr($linkdate,6,2), substr($linkdate,0,4));
-		$linkpubdate = Date('Ymd',$linktime + 3600*24*(8-Date('N',$linktime)));
-//		echo $linkdate." - ".$linkpubdate."\n";
-        //$day=substr($linkdate,0,8); // Extract day (without time)
+        $linktime = mktime(0,0,0, substr($linkdate,4,2), substr($linkdate,6,2), substr($linkdate,0,4));
+        $linkpubdate = Date('Ymd',$linktime + 3600*24*(8-Date('N',$linktime)));
         if (strcmp($linkpubdate,$last_published)<=0)
         {
             if (empty($weeks[$linkpubdate])) $weeks[$linkpubdate]=array();
             $weeks[$linkpubdate][]=$linkdate;
         }
-		if (count($weeks)>$nb_of_weeks) break; // Have we collected enough weeks ?*/
-	}
-//	print_r($weeks);
-//	exit();
+        if (count($weeks)>$nb_of_weeks) break; // Have we collected enough weeks ?*/
+    }
     
     // Build the RSS feed.
     header('Content-Type: application/rss+xml; charset=utf-8');
     $pageaddr=htmlspecialchars(indexUrl());
     echo '<?xml version="1.0" encoding="UTF-8"?><rss version="2.0">';
-    echo '<channel><title>Weekly - '.htmlspecialchars($GLOBALS['title']).'</title><link>'.$pageaddr.'</link>';
-    echo '<description>Weekly shared links</description><language>en-en</language><copyright>'.$pageaddr.'</copyright>'."\n";
+    echo '<channel><title>Hebdomadaire - '.htmlspecialchars($GLOBALS['title']).'</title><link>'.$pageaddr.'</link>';
+    echo '<description>Liens partagés de la semaine</description><language>fr-fr</language><copyright>'.$pageaddr.'</copyright>'."\n";
     
     foreach($weeks as $week=>$linkdates) // For each week.
     {
