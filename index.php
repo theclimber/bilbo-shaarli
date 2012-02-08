@@ -1,5 +1,5 @@
 <?php
-// Shaarli 0.0.37 beta - Shaare your links...
+// Shaarli 0.0.38 beta - Shaare your links...
 // The personal, minimalist, super-fast, no-database delicious clone. By sebsauvage.net
 // http://sebsauvage.net/wiki/doku.php?id=php:shaarli
 // Licence: http://www.opensource.org/licenses/zlib-license.php
@@ -30,6 +30,7 @@ ini_set('max_input_time','60');  // High execution time in case of problematic i
 ini_set('memory_limit', '128M');  // Try to set max upload file size and read (May not work on some hosts).
 ini_set('post_max_size', '16M');
 ini_set('upload_max_filesize', '16M');
+define('shaarli_version','0.0.38 beta');
 define('PHPPREFIX','<?php /* '); // Prefix to encapsulate data in php code.
 define('PHPSUFFIX',' */ ?>'); // Suffix to encapsulate data in php code.
 checkphpversion();
@@ -58,8 +59,8 @@ header("Last-Modified: " . gmdate("D, d M Y H:i:s") . " GMT");
 header("Cache-Control: no-store, no-cache, must-revalidate");
 header("Cache-Control: post-check=0, pre-check=0", false);
 header("Pragma: no-cache");
-define('shaarli_version','0.0.37 beta');
 if (!is_dir($GLOBALS['config']['DATADIR'])) { mkdir($GLOBALS['config']['DATADIR'],0705); chmod($GLOBALS['config']['DATADIR'],0705); }
+if (!is_dir('tmp')) { mkdir('tmp',0705); chmod('tmp',0705); } // For RainTPL temporary files.
 if (!is_file($GLOBALS['config']['DATADIR'].'/.htaccess')) { file_put_contents($GLOBALS['config']['DATADIR'].'/.htaccess',"Allow from none\nDeny from all\n"); } // Protect data files.
 if ($GLOBALS['config']['ENABLE_LOCALCACHE'])
 {
@@ -531,6 +532,7 @@ class pageBuilder
         $this->tpl->assign('version',shaarli_version);
         $this->tpl->assign('scripturl',indexUrl());
         $this->tpl->assign('pagetitle','Shaarli');
+        $this->tpl->assign('privateonly',!empty($_SESSION['privateonly'])); // Show only private links ?
         if (!empty($GLOBALS['title'])) $this->tpl->assign('pagetitle',$GLOBALS['title']);
         if (!empty($GLOBALS['pagetitle'])) $this->tpl->assign('pagetitle',$GLOBALS['pagetitle']);
         $this->tpl->assign('shaarlititle',empty($GLOBALS['title']) ? 'Shaarli': $GLOBALS['title'] );
@@ -745,6 +747,20 @@ class linkdb implements Iterator, Countable, ArrayAccess
                 if (!empty($tag)) $tags[$tag]=(empty($tags[$tag]) ? 1 : $tags[$tag]+1);
         arsort($tags); // Sort tags by usage (most used tag first)
         return $tags;
+    }
+    
+    // Returns the list of days containing articles (oldest first)
+    // Output: An array containing days (in format YYYYMMDD).
+    public function days()
+    {
+        $linkdays=array();
+        foreach(array_keys($this->links) as $day)
+        {
+            $linkdays[substr($day,0,8)]=0;
+        }
+        $linkdays=array_keys($linkdays);
+        sort($linkdays);
+        return $linkdays;
     }
 }
 
@@ -998,7 +1014,7 @@ function renderPage()
         // Get previous URL (http_referer) and add the tag to the searchtags parameters in query.
         if (empty($_SERVER['HTTP_REFERER'])) { header('Location: ?searchtags='.urlencode($_GET['addtag'])); exit; } // In case browser does not send HTTP_REFERER
         parse_str(parse_url($_SERVER['HTTP_REFERER'],PHP_URL_QUERY), $params);
-        $params['searchtags'] = (empty($params['searchtags']) ?  trim($_GET['addtag']) : trim($params['searchtags']).' '.urlencode(trim($_GET['addtag'])));
+        $params['searchtags'] = (empty($params['searchtags']) ?  trim($_GET['addtag']) : trim($params['searchtags']).' '.trim($_GET['addtag']));
         unset($params['page']); // We also remove page (keeping the same page has no sense, since the results are different)
         header('Location: ?'.http_build_query($params));
         exit;
@@ -1049,10 +1065,18 @@ function renderPage()
     { 
         $day=Date('Ymd',strtotime('-1 day')); // Yesterday, in format YYYYMMDD.
         if (isset($_GET['day'])) $day=$_GET['day'];
-
-        $previousday = Date('Ymd',strtotime('-1 day',strtotime($day))); 
-        $nextday = Date('Ymd',strtotime('+1 day',strtotime($day))); 
         
+        $days = $LINKSDB->days();
+        $i = array_search($day,$days);
+        if ($i==false) { $i=count($days)-1; $day=$days[$i]; }
+        $previousday=''; 
+        $nextday=''; 
+        if ($i!==false)
+        {
+            if ($i>1) $previousday=$days[$i-1];
+            if ($i<count($days)-1) $nextday=$days[$i+1];
+        }
+
         $linksToDisplay=$LINKSDB->filterDay($day);
         // We pre-format some fields for proper output.
         foreach($linksToDisplay as $key=>$link)
