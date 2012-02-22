@@ -14,7 +14,7 @@ $GLOBALS['config']['IPBANS_FILENAME'] = $GLOBALS['config']['DATADIR'].'/ipbans.p
 $GLOBALS['config']['BAN_AFTER'] = 4;        // Ban IP after this many failures.
 $GLOBALS['config']['BAN_DURATION'] = 1800;  // Ban duration for IP address after login failures (in seconds) (1800 sec. = 30 minutes)
 $GLOBALS['config']['OPEN_SHAARLI'] = false; // If true, anyone can add/edit/delete links without having to login
-$GLOBALS['config']['HIDE_TIMESTAMPS'] = false; // If true, the moment when links were saved are not shown to users that are not logged in.
+$GLOBALS['config']['HIDE_TIMESTAMPS'] = true; // If true, the moment when links were saved are not shown to users that are not logged in.
 $GLOBALS['config']['ENABLE_THUMBNAILS'] = true; // Enable thumbnails in links.
 $GLOBALS['config']['CACHEDIR'] = 'cache'; // Cache directory for thumbnails for SLOW services (like flickr)
 $GLOBALS['config']['PAGECACHE'] = 'pagecache'; // Page cache directory.
@@ -1379,7 +1379,7 @@ function showWeeklyRSS()
         // Then build the HTML for this week:
         $tpl = new RainTPL;    
         $tpl->assign('links',$links);
-        $html = $tpl->draw('dailyrss',$return_string=true);
+        $html = $tpl->draw('weeklyrss',$return_string=true);
         echo "\n";
         echo '<description><![CDATA['.$html.']]></description>'."\n</item>\n\n";
 
