@@ -733,6 +733,16 @@ class linkdb implements Iterator, Countable, ArrayAccess
         ksort($filtered);
         return $filtered;
     }
+    public function filterMonth($month)
+    {
+        $filtered=array();
+        foreach($this->links as $l)
+        {
+            if (startsWith($l['linkdate'],$month)) $filtered[$l['linkdate']] = $l;
+        }
+        ksort($filtered);
+        return $filtered;
+    }
     // Filter by smallHash.
     // Only 1 article is returned.
     public function filterSmallHash($smallHash)
@@ -769,6 +779,18 @@ class linkdb implements Iterator, Countable, ArrayAccess
         foreach(array_keys($this->links) as $day)
         {
             $linkdays[substr($day,0,8)]=0;
+        }
+        $linkdays=array_keys($linkdays);
+        sort($linkdays);
+        return $linkdays;
+    }
+
+    public function months()
+    {
+        $linkdays=array();
+        foreach(array_keys($this->links) as $month)
+        {
+            $linkdays[substr($month,0,6)]=0;
         }
         $linkdays=array_keys($linkdays);
         sort($linkdays);
@@ -1021,6 +1043,76 @@ function showWeeklyRSS()
     exit;
 }
 
+// Daily RSS feed: 1 RSS entry per week giving all the links on that week.
+// Gives the last 7 weeks (which have links).
+// This RSS feed cannot be filtered.
+function showMonthlyRSS()
+{
+    global $LINKSDB;
+    
+    /* Some Shaarlies may have very few links, so we need to look
+       back in time (rsort()) until we have enough weeks ($nb_of_weeks).
+	 */
+    $linkdates=array(); foreach($LINKSDB as $linkdate=>$value) { $linkdates[]=$linkdate; } 
+    rsort($linkdates);
+    $nb_of_days=7; // We take 7 days.
+    $today=Date('Ym');
+    $months=array();
+    foreach($linkdates as $linkdate)
+    {
+        $day=substr($linkdate,0,6); // Extract day (without time)
+        if (strcmp($day,$today)<0)
+        {
+            if (empty($months[$day])) $months[$day]=array();
+            $months[$day][]=$linkdate;
+        }
+        if (count($months)>$nb_of_days) break; // Have we collected enough months ?
+    }
+
+//	print_r($weeks);
+//	exit();
+    
+    // Build the RSS feed.
+    header('Content-Type: application/rss+xml; charset=utf-8');
+    $pageaddr=htmlspecialchars(indexUrl());
+    echo '<?xml version="1.0" encoding="UTF-8"?><rss version="2.0">';
+    echo '<channel><title>Monthly - '.htmlspecialchars($GLOBALS['title']).'</title><link>'.$pageaddr.'</link>';
+    echo '<description>Monthly shared links</description><language>en-en</language><copyright>'.$pageaddr.'</copyright>'."\n";
+    
+    foreach($months as $month=>$linkdates) // For each month.
+    {
+        $monthdate = utf8_encode(strftime('%B %Y',linkdate2timestamp($month.'01_000000'))); // Full text date
+        $rfc822date = linkdate2rfc822($month.'01_000000');
+        $absurl=htmlspecialchars(indexUrl().'?do=monthly&month='.$month);  // Absolute URL of the corresponding "Daily" page.
+        echo '<item><title>'.htmlspecialchars($GLOBALS['title'].' - '.$monthdate).'</title><guid>'.$absurl.'</guid><link>'.$absurl.'</link>';
+        echo '<pubDate>'.htmlspecialchars($rfc822date)."</pubDate>";
+        
+        // Build the HTML body of this RSS entry.
+        $html='';
+        $href='';
+        $links=array();
+        // We pre-format some fields for proper output.
+        foreach($linkdates as $linkdate)
+        {
+            $l = $LINKSDB[$linkdate];
+            $l['formatedDescription']=nl2br(keepMultipleSpaces(text2clickable(htmlspecialchars($l['description']))));
+            $l['thumbnail'] = thumbnail($l['url']);
+            $l['localdate']=linkdate2locale($l['linkdate']);
+            if (startsWith($l['url'],'?')) $l['url']=indexUrl().$l['url'];  // make permalink URL absolute
+            $links[$linkdate]=$l;
+        }
+        // Then build the HTML for this week:
+        $tpl = new RainTPL;
+        $tpl->assign('links',$links);
+        $html = $tpl->draw('dailyrss',$return_string=true);
+        echo "\n";
+        echo '<description><![CDATA['.$html.']]></description>'."\n</item>\n\n";
+
+    }
+    echo '</channel></rss>';
+    exit;
+}
+
 
 // ------------------------------------------------------------------------------------------
 // Render HTML page (according to URL parameters and user rights)
@@ -1261,6 +1353,66 @@ function renderPage()
         $PAGE->assign('previousweek',$previousweek);
         $PAGE->assign('nextweek',$nextweek);
         $PAGE->renderPage('weekly');
+        exit;
+    }
+
+    // --------- Monthly (all links form a specific month) ----------------------
+    if (isset($_SERVER["QUERY_STRING"]) && startswith($_SERVER["QUERY_STRING"],'do=monthly'))
+    { 
+        $month=Date('Ym',strtotime('-1 month')); // Previous month, in format YYYYMM.
+        if (isset($_GET['month'])) $month=$_GET['month'];
+        
+        $months = $LINKSDB->months();
+        $i = array_search($month,$months);
+        if ($i===false) { $i=count($months)-1; $month=$months[$i]; }
+        $previousmonth=''; 
+        $nextmonth=''; 
+        if ($i!==false)
+        {
+            if ($i>=1) $previousmonth=$months[$i-1];
+            if ($i<count($months)-1) $nextmonth=$months[$i+1];
+        }
+
+        $linksToDisplay=$LINKSDB->filterMonth($month);
+
+        // We pre-format some fields for proper output.
+        foreach($linksToDisplay as $key=>$link)
+        {
+            $linksToDisplay[$key]['taglist']=explode(' ',$link['tags']);
+            $linksToDisplay[$key]['formatedDescription']=nl2br(keepMultipleSpaces(text2clickable(htmlspecialchars($link['description']))));
+            $linksToDisplay[$key]['thumbnail'] = thumbnail($link['url']);
+        }
+        
+        /* We need to spread the articles on 3 columns.
+           I did not want to use a javascript lib like http://masonry.desandro.com/
+           so I manually spread entries with a simple method: I roughly evaluate the 
+           height of a div according to title and description length.
+        */
+        $columns=array(array(),array(),array()); // Entries to display, for each column.
+        $fill=array(0,0,0);  // Rough estimate of columns fill.
+        foreach($linksToDisplay as $key=>$link)
+        {
+            // Roughly estimate length of entry (by counting characters)
+            // Title: 30 chars = 1 line. 1 line is 30 pixels height.
+            // Description: 836 characters gives roughly 342 pixel height.
+            // This is not perfect, but it's usually ok.
+            $length=strlen($link['title'])+(342*strlen($link['description']))/836;
+            if ($link['thumbnail']) $length +=100; // 1 thumbnails roughly takes 100 pixels height.
+            // Then put in column which is the less filled:
+            $smallest=min($fill); // find smallest value in array.
+            $index=array_search($smallest,$fill); // find index of this smallest value.
+            array_push($columns[$index],$link); // Put entry in this column.
+            $fill[$index]+=$length;
+        }
+        $PAGE = new pageBuilder;
+        $PAGE->assign('linksToDisplay',$linksToDisplay);
+        $PAGE->assign('col1',$columns[0]);
+        $PAGE->assign('col2',$columns[1]);
+        $PAGE->assign('col3',$columns[2]);
+        $PAGE->assign('month',utf8_encode(strftime('%B %Y',linkdate2timestamp($month.'01_000000'))));
+        $PAGE->assign('previousmonth',$previousmonth);
+        $PAGE->assign('nextmonth',$nextmonth);
+        $PAGE->renderPage('monthly');
         exit;
     }
 
@@ -2316,6 +2468,7 @@ if (isset($_SERVER["QUERY_STRING"]) && startswith($_SERVER["QUERY_STRING"],'ws='
 if (!isset($_SESSION['LINKS_PER_PAGE'])) $_SESSION['LINKS_PER_PAGE']=$GLOBALS['config']['LINKS_PER_PAGE'];
 if (isset($_SERVER["QUERY_STRING"]) && startswith($_SERVER["QUERY_STRING"],'do=dailyrss')) { showDailyRSS(); exit; }
 if (isset($_SERVER["QUERY_STRING"]) && startswith($_SERVER["QUERY_STRING"],'do=weeklyrss')) { showWeeklyRSS(); exit; }
+if (isset($_SERVER["QUERY_STRING"]) && startswith($_SERVER["QUERY_STRING"],'do=monthlyrss')) { showMonthlyRSS(); exit; }
 if (isset($_SERVER["QUERY_STRING"]) && startswith($_SERVER["QUERY_STRING"],'do=rss')) { showRSS(); exit; }
 if (isset($_SERVER["QUERY_STRING"]) && startswith($_SERVER["QUERY_STRING"],'do=atom')) { showATOM(); exit; }
 renderPage();
