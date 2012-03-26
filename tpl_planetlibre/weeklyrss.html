@@ -1,6 +1,16 @@
 {loop="links"}
 	<h3><a href="{$value.url}">{$value.title|htmlspecialchars}</a></h3>
-	<small>{if="!$GLOBALS['config']['HIDE_TIMESTAMPS']"}{$value.localdate|htmlspecialchars} - {/if}{if="$value.tags"}{$value.tags|htmlspecialchars}{/if}</small><br>
+	<small>{if="!$GLOBALS['config']['HIDE_TIMESTAMPS']"}{$value.localdate|htmlspecialchars} - {/if}
+		{if="$value.tags"}
+			<div class="linktaglist">
+			{loop="value.taglist"}<span class="tag">{$value|htmlspecialchars}</span>{/loop}
+			</div>
+		{/if}
+		{if="$value.tags"}
+		{loop="$value.tags"}
+		<span class="tag">{$value.tags|htmlspecialchars}</span>
+		{/loop}
+	{/if}</small><br>
 	{if="$value.thumbnail"}{$value.thumbnail}{/if}<br>
 	{if="$value.description"}{$value.formatedDescription}{/if}
 	<br><br><hr>

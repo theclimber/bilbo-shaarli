@@ -1220,6 +1220,7 @@ function showWeeklyRSS()
                 $l['url']=indexUrl().$l['url'];  // make permalink URL absolute
             $links[$linkdate]=$l;    
             $tags[]=$l['tags'];
+            $links[$linkdate]['taglist']=explode(' ',$l['tags']);
         }
         foreach($tags as $itemtags) {
             $itemtags = explode(" ",$itemtags);
@@ -1299,6 +1300,7 @@ function showMonthlyRSS()
             if (startsWith($l['url'],'?')) $l['url']=indexUrl().$l['url'];  // make permalink URL absolute
             $links[$linkdate]=$l;
             $tags=$l['tags'];
+            $links[$linkdate]['taglist']=explode(' ',$l['tags']);
         }
         foreach($tags as $itemtags) {
             $itemtags = explode(" ",$itemtags);
