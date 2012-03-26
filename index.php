@@ -1310,7 +1310,7 @@ function showMonthlyRSS()
         // Then build the HTML for this week:
         $tpl = new RainTPL;
         $tpl->assign('links',$links);
-        $html = $tpl->draw('dailyrss',$return_string=true);
+        $html = $tpl->draw('weeklyrss',$return_string=true);
         echo "\n";
         echo '<description><![CDATA['.$html.']]></description>'."\n</item>\n\n";
 
