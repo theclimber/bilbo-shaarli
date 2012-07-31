@@ -939,7 +939,7 @@ function showDailyRSS()
         $rfc822date = linkdate2rfc822($day.'_000000');
         $absurl=htmlspecialchars(indexUrl().'?do=daily&day='.$day);  // Absolute URL of the corresponding "Daily" page.
         echo '<item><title>'.htmlspecialchars($GLOBALS['title'].' - '.$daydate).'</title><guid>'.$absurl.'</guid><link>'.$absurl.'</link>';
-        echo '<pubDate>'.htmlspecialchars($rfc822date)."</pubDate>";
+        echo '<pubDate>'.htmlspecialchars($rfc822date)."</pubDate>\n";
         
         // Build the HTML body of this RSS entry.
         $html='';
@@ -957,8 +957,10 @@ function showDailyRSS()
             $links[$linkdate]=$l;    
             $tags[]=$l['tags'];
         }
-        foreach($tags as $tagitem) {
-            echo "<category>".$tagitem."<category>";
+        foreach($tags as $itemtags) {
+            $itemtags = explode(" ",$itemtags);
+            foreach($itemtags as $tag)
+                echo "<category>".$tag."</category>\n";
         }
         // Then build the HTML for this day:
         $tpl = new RainTPL;    
@@ -982,26 +984,26 @@ function showWeeklyRSS()
     
     /* Some Shaarlies may have very few links, so we need to look
        back in time (rsort()) until we have enough weeks ($nb_of_weeks).
-	 */
-	$day_to_publish = 1;  // 1 (for Monday) through 7 (for Sunday)
+     */
+    $day_to_publish = 1;  // 1 (for Monday) through 7 (for Sunday)
     $linkdates=array(); foreach($LINKSDB as $linkdate=>$value) { $linkdates[]=$linkdate; } 
     rsort($linkdates);
     $nb_of_weeks=7; // We take 7 weeks.
-	$day_of_the_week=Date('N') - $day_to_publish;
-	$last_published = Date('Ymd',time() - 3600*24*$day_of_the_week); // one week ago
+    $day_of_the_week=Date('N') - $day_to_publish;
+    $last_published = Date('Ymd',time() - 3600*24*$day_of_the_week); // one week ago
     $weeks=array();
     foreach($linkdates as $linkdate)
     {
-		$linktime = mktime(0,0,0, substr($linkdate,4,2), substr($linkdate,6,2), substr($linkdate,0,4));
-		$linkpubdate = Date('Ymd',$linktime + 3600*24*(8-Date('N',$linktime)));
-        //$day=substr($linkdate,0,8); // Extract day (without time)
+        $linktime = mktime(0,0,0, substr($linkdate,4,2), substr($linkdate,6,2), substr($linkdate,0,4));
+        $linkpubdate = Date('Ymd',$linktime + 3600*24*(8-Date('N',$linktime)));
         if (strcmp($linkpubdate,$last_published)<=0)
         {
-            if (empty($weeks[$linkpubdate])) $weeks[$linkpubdate]=array();
+            if (empty($weeks[$linkpubdate]))
+                $weeks[$linkpubdate]=array();
             $weeks[$linkpubdate][]=$linkdate;
         }
-		if (count($weeks)>$nb_of_weeks) break; // Have we collected enough weeks ?*/
-	}
+        if (count($weeks)>$nb_of_weeks) break; // Have we collected enough weeks ?*/
+    }
     
     // Build the RSS feed.
     header('Content-Type: application/rss+xml; charset=utf-8');
@@ -1016,7 +1018,7 @@ function showWeeklyRSS()
         $rfc822date = linkdate2rfc822($week.'_000000');
         $absurl=htmlspecialchars(indexUrl().'?do=weekly&week='.$week);  // Absolute URL of the corresponding "Daily" page.
         echo '<item><title>'.htmlspecialchars($GLOBALS['title'].' - '.$weekdate).'</title><guid>'.$absurl.'</guid><link>'.$absurl.'</link>';
-        echo '<pubDate>'.htmlspecialchars($rfc822date)."</pubDate>";
+        echo '<pubDate>'.htmlspecialchars($rfc822date)."</pubDate>\n";
         
         // Build the HTML body of this RSS entry.
         $html='';
@@ -1030,12 +1032,15 @@ function showWeeklyRSS()
             $l['formatedDescription']=nl2br(keepMultipleSpaces(text2clickable(htmlspecialchars($l['description']))));
             $l['thumbnail'] = thumbnail($l['url']);  
             $l['localdate']=linkdate2locale($l['linkdate']);            
-            if (startsWith($l['url'],'?')) $l['url']=indexUrl().$l['url'];  // make permalink URL absolute
+            if (startsWith($l['url'],'?'))
+                $l['url']=indexUrl().$l['url'];  // make permalink URL absolute
             $links[$linkdate]=$l;    
             $tags[]=$l['tags'];
         }
-        foreach($tags as $tagitem) {
-            echo "<category>".$tagitem."<category>";
+        foreach($tags as $itemtags) {
+            $itemtags = explode(" ",$itemtags);
+            foreach($itemtags as $tag)
+                echo "<category>".$tag."</category>\n";
         }
         // Then build the HTML for this week:
         $tpl = new RainTPL;    
@@ -1058,7 +1063,7 @@ function showMonthlyRSS()
     
     /* Some Shaarlies may have very few links, so we need to look
        back in time (rsort()) until we have enough weeks ($nb_of_weeks).
-	 */
+     */
     $linkdates=array(); foreach($LINKSDB as $linkdate=>$value) { $linkdates[]=$linkdate; } 
     rsort($linkdates);
     $nb_of_days=7; // We take 7 days.
@@ -1088,7 +1093,7 @@ function showMonthlyRSS()
         $rfc822date = linkdate2rfc822($month.'01_000000');
         $absurl=htmlspecialchars(indexUrl().'?do=monthly&month='.$month);  // Absolute URL of the corresponding "Daily" page.
         echo '<item><title>'.htmlspecialchars($GLOBALS['title'].' - '.$monthdate).'</title><guid>'.$absurl.'</guid><link>'.$absurl.'</link>';
-        echo '<pubDate>'.htmlspecialchars($rfc822date)."</pubDate>";
+        echo '<pubDate>'.htmlspecialchars($rfc822date)."</pubDate>\n";
         
         // Build the HTML body of this RSS entry.
         $html='';
@@ -1106,8 +1111,10 @@ function showMonthlyRSS()
             $links[$linkdate]=$l;
             $tags=$l['tags'];
         }
-        foreach($tags as $tagitem) {
-            echo "<category>".$tagitem."<category>";
+        foreach($tags as $itemtags) {
+            $itemtags = explode(" ",$itemtags);
+            foreach($itemtags as $tag)
+                echo "<category>".$tag."</category>\n";
         }
         // Then build the HTML for this week:
         $tpl = new RainTPL;
