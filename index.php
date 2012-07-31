@@ -945,6 +945,7 @@ function showDailyRSS()
         $html='';
         $href='';
         $links=array();
+        $tags=array();
         // We pre-format some fields for proper output.
         foreach($linkdates as $linkdate)
         {
@@ -954,6 +955,10 @@ function showDailyRSS()
             $l['localdate']=linkdate2locale($l['linkdate']);            
             if (startsWith($l['url'],'?')) $l['url']=indexUrl().$l['url'];  // make permalink URL absolute
             $links[$linkdate]=$l;    
+            $tags[]=$l['tags'];
+        }
+        foreach($tags as $tagitem) {
+            echo "<category>".$tagitem."<category>";
         }
         // Then build the HTML for this day:
         $tpl = new RainTPL;    
@@ -968,7 +973,7 @@ function showDailyRSS()
 }
 
 
-// Daily RSS feed: 1 RSS entry per week giving all the links on that week.
+// Weekly RSS feed: 1 RSS entry per week giving all the links on that week.
 // Gives the last 7 weeks (which have links).
 // This RSS feed cannot be filtered.
 function showWeeklyRSS()
@@ -982,7 +987,6 @@ function showWeeklyRSS()
     $linkdates=array(); foreach($LINKSDB as $linkdate=>$value) { $linkdates[]=$linkdate; } 
     rsort($linkdates);
     $nb_of_weeks=7; // We take 7 weeks.
-//    $today=Date('Ymd');
 	$day_of_the_week=Date('N') - $day_to_publish;
 	$last_published = Date('Ymd',time() - 3600*24*$day_of_the_week); // one week ago
     $weeks=array();
@@ -990,7 +994,6 @@ function showWeeklyRSS()
     {
 		$linktime = mktime(0,0,0, substr($linkdate,4,2), substr($linkdate,6,2), substr($linkdate,0,4));
 		$linkpubdate = Date('Ymd',$linktime + 3600*24*(8-Date('N',$linktime)));
-//		echo $linkdate." - ".$linkpubdate."\n";
         //$day=substr($linkdate,0,8); // Extract day (without time)
         if (strcmp($linkpubdate,$last_published)<=0)
         {
@@ -999,8 +1002,6 @@ function showWeeklyRSS()
         }
 		if (count($weeks)>$nb_of_weeks) break; // Have we collected enough weeks ?*/
 	}
-//	print_r($weeks);
-//	exit();
     
     // Build the RSS feed.
     header('Content-Type: application/rss+xml; charset=utf-8');
@@ -1021,6 +1022,7 @@ function showWeeklyRSS()
         $html='';
         $href='';
         $links=array();
+        $tags=array();
         // We pre-format some fields for proper output.
         foreach($linkdates as $linkdate)
         {
@@ -1030,6 +1032,10 @@ function showWeeklyRSS()
             $l['localdate']=linkdate2locale($l['linkdate']);            
             if (startsWith($l['url'],'?')) $l['url']=indexUrl().$l['url'];  // make permalink URL absolute
             $links[$linkdate]=$l;    
+            $tags[]=$l['tags'];
+        }
+        foreach($tags as $tagitem) {
+            echo "<category>".$tagitem."<category>";
         }
         // Then build the HTML for this week:
         $tpl = new RainTPL;    
@@ -1043,8 +1049,8 @@ function showWeeklyRSS()
     exit;
 }
 
-// Daily RSS feed: 1 RSS entry per week giving all the links on that week.
-// Gives the last 7 weeks (which have links).
+// Monthly RSS feed: 1 RSS entry per month giving all the links on that month.
+// Gives the last 7 month (which have links).
 // This RSS feed cannot be filtered.
 function showMonthlyRSS()
 {
@@ -1068,9 +1074,6 @@ function showMonthlyRSS()
         }
         if (count($months)>$nb_of_days) break; // Have we collected enough months ?
     }
-
-//	print_r($weeks);
-//	exit();
     
     // Build the RSS feed.
     header('Content-Type: application/rss+xml; charset=utf-8');
@@ -1091,6 +1094,7 @@ function showMonthlyRSS()
         $html='';
         $href='';
         $links=array();
+        $tags=array();
         // We pre-format some fields for proper output.
         foreach($linkdates as $linkdate)
         {
@@ -1100,6 +1104,10 @@ function showMonthlyRSS()
             $l['localdate']=linkdate2locale($l['linkdate']);
             if (startsWith($l['url'],'?')) $l['url']=indexUrl().$l['url'];  // make permalink URL absolute
             $links[$linkdate]=$l;
+            $tags=$l['tags'];
+        }
+        foreach($tags as $tagitem) {
+            echo "<category>".$tagitem."<category>";
         }
         // Then build the HTML for this week:
         $tpl = new RainTPL;
