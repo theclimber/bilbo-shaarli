@@ -1,13 +1,11 @@
 <?php
-// Shaarli 0.0.38 beta - Shaare your links...
+// Shaarli 0.0.40 beta - Shaare your links...
 // The personal, minimalist, super-fast, no-database delicious clone. By sebsauvage.net
 // http://sebsauvage.net/wiki/doku.php?id=php:shaarli
 // Licence: http://www.opensource.org/licenses/zlib-license.php
-
-// Requires: php 5.1.x
-// (but autocomplete fields will only work if you have php 5.2.x)
+// Requires: php 5.1.x  (but autocomplete fields will only work if you have php 5.2.x)
 // -----------------------------------------------------------------------------------------------
-// User config:
+// Hardcoded parameter (These parameters can be overwritten by creating the file /config/options.php)
 $GLOBALS['config']['DATADIR'] = 'data'; // Data subdirectory
 $GLOBALS['config']['CONFIG_FILE'] = $GLOBALS['config']['DATADIR'].'/config.php'; // Configuration file (user login/password)
 $GLOBALS['config']['DATASTORE'] = $GLOBALS['config']['DATADIR'].'/datastore.php'; // Data storage file.
@@ -19,32 +17,41 @@ $GLOBALS['config']['OPEN_SHAARLI'] = false; // If true, anyone can add/edit/dele
 $GLOBALS['config']['HIDE_TIMESTAMPS'] = false; // If true, the moment when links were saved are not shown to users that are not logged in.
 $GLOBALS['config']['ENABLE_THUMBNAILS'] = true; // Enable thumbnails in links.
 $GLOBALS['config']['CACHEDIR'] = 'cache'; // Cache directory for thumbnails for SLOW services (like flickr)
+$GLOBALS['config']['PAGECACHE'] = 'pagecache'; // Page cache directory.
 $GLOBALS['config']['ENABLE_LOCALCACHE'] = true; // Enable Shaarli to store thumbnail in a local cache. Disable to reduce webspace usage.
 $GLOBALS['config']['PUBSUBHUB_URL'] = ''; // PubSubHubbub support. Put an empty string to disable, or put your hub url here to enable.
-                                          // Note: You must have publisher.php in the same directory as Shaarli index.php
-// -----------------------------------------------------------------------------------------------
-// Program config (touch at your own risks !)
 $GLOBALS['config']['UPDATECHECK_FILENAME'] = $GLOBALS['config']['DATADIR'].'/lastupdatecheck.txt'; // For updates check of Shaarli.
 $GLOBALS['config']['UPDATECHECK_INTERVAL'] = 86400 ; // Updates check frequency for Shaarli. 86400 seconds=24 hours
+                                          // Note: You must have publisher.php in the same directory as Shaarli index.php
+// -----------------------------------------------------------------------------------------------
+// You should not touch below (or at your own risks !)
+// Optionnal config file.
+if (is_file($GLOBALS['config']['DATADIR'].'/options.php')) require($GLOBALS['config']['DATADIR'].'/options.php');
+
+define('shaarli_version','0.0.40 beta');
+define('PHPPREFIX','<?php /* '); // Prefix to encapsulate data in php code.
+define('PHPSUFFIX',' */ ?>'); // Suffix to encapsulate data in php code.
+
+// Force cookie path (but do not change lifetime)
+$cookie=session_get_cookie_params();
+session_set_cookie_params($cookie['lifetime'],dirname($_SERVER["SCRIPT_NAME"]).'/'); // Default cookie expiration and path.
+
+// PHP Settings
 ini_set('max_input_time','60');  // High execution time in case of problematic imports/exports.
 ini_set('memory_limit', '128M');  // Try to set max upload file size and read (May not work on some hosts).
 ini_set('post_max_size', '16M');
 ini_set('upload_max_filesize', '16M');
-define('shaarli_version','0.0.38 beta');
-define('PHPPREFIX','<?php /* '); // Prefix to encapsulate data in php code.
-define('PHPSUFFIX',' */ ?>'); // Suffix to encapsulate data in php code.
 checkphpversion();
 error_reporting(E_ALL^E_WARNING);  // See all error except warnings.
 //error_reporting(-1); // See all errors (for debugging only)
 
 include "inc/rain.tpl.class.php"; //include Rain TPL
 raintpl::$tpl_dir = "tpl/"; // template directory
+if (!is_dir('tmp')) { mkdir('tmp',0705); chmod('tmp',0705); }
 raintpl::$cache_dir = "tmp/"; // cache directory
 
-ob_start();
+ob_start();  // Output buffering for the page cache.
 
-// Optionnal config file.
-if (is_file($GLOBALS['config']['DATADIR'].'/options.php')) require($GLOBALS['config']['DATADIR'].'/options.php');
 
 // In case stupid admin has left magic_quotes enabled in php.ini:
 if (get_magic_quotes_gpc())
@@ -54,11 +61,14 @@ if (get_magic_quotes_gpc())
     $_GET = array_map('stripslashes_deep', $_GET);
     $_COOKIE = array_map('stripslashes_deep', $_COOKIE);
 }
-// Prevent caching: (yes, it's ugly)
+
+// Prevent caching on client side or proxy: (yes, it's ugly)
 header("Last-Modified: " . gmdate("D, d M Y H:i:s") . " GMT");
 header("Cache-Control: no-store, no-cache, must-revalidate");
 header("Cache-Control: post-check=0, pre-check=0", false);
 header("Pragma: no-cache");
+
+// Directories creations (Note that your web host may require differents rights than 705.)
 if (!is_dir($GLOBALS['config']['DATADIR'])) { mkdir($GLOBALS['config']['DATADIR'],0705); chmod($GLOBALS['config']['DATADIR'],0705); }
 if (!is_dir('tmp')) { mkdir('tmp',0705); chmod('tmp',0705); } // For RainTPL temporary files.
 if (!is_file($GLOBALS['config']['DATADIR'].'/.htaccess')) { file_put_contents($GLOBALS['config']['DATADIR'].'/.htaccess',"Allow from none\nDeny from all\n"); } // Protect data files.
@@ -67,14 +77,20 @@ if ($GLOBALS['config']['ENABLE_LOCALCACHE'])
     if (!is_dir($GLOBALS['config']['CACHEDIR'])) { mkdir($GLOBALS['config']['CACHEDIR'],0705); chmod($GLOBALS['config']['CACHEDIR'],0705); }
     if (!is_file($GLOBALS['config']['CACHEDIR'].'/.htaccess')) { file_put_contents($GLOBALS['config']['CACHEDIR'].'/.htaccess',"Allow from none\nDeny from all\n"); } // Protect data files.
 }
+
+// Run config screen if first run:
 if (!is_file($GLOBALS['config']['CONFIG_FILE'])) install();
+
 require $GLOBALS['config']['CONFIG_FILE'];  // Read login/password hash into $GLOBALS.
-// Small protection against dodgy config files:
+
+// Handling of old config file which do not have the new parameters.
 if (empty($GLOBALS['title'])) $GLOBALS['title']='Shared links on '.htmlspecialchars(indexUrl());
 if (empty($GLOBALS['timezone'])) $GLOBALS['timezone']=date_default_timezone_get();
+if (empty($GLOBALS['disablesessionprotection'])) $GLOBALS['disablesessionprotection']=false;
+
+
 autoLocale(); // Sniff browser language and set date format accordingly.
 header('Content-Type: text/html; charset=utf-8'); // We use UTF-8 for proper international characters handling.
-$LINKSDB=false;
 
 // Check php version
 function checkphpversion()
@@ -109,6 +125,65 @@ function checkUpdate()
     if (version_compare($newestversion,shaarli_version)==1) return $newestversion;
     return '';
 }
+
+
+// -----------------------------------------------------------------------------------------------
+// Simple cache system (mainly for the RSS/ATOM feeds).
+
+class pageCache
+{
+    private $url; // Full URL of the page to cache (typically the value returned by pageUrl())
+    private $shouldBeCached; // boolean: Should this url be cached ?
+    private $filename; // Name of the cache file for this url
+
+    /* 
+         $url = url (typically the value returned by pageUrl())
+         $shouldBeCached = boolean. If false, the cache will be disabled.
+    */
+    public function __construct($url,$shouldBeCached)
+    {
+        $this->url = $url;
+        $this->filename = $GLOBALS['config']['PAGECACHE'].'/'.sha1($url).'.cache';
+        $this->shouldBeCached = $shouldBeCached;
+    } 
+
+    // If the page should be cached and a cached version exists,
+    // returns the cached version (otherwise, return null).
+    public function cachedVersion()
+    {
+        if (!$this->shouldBeCached) return null;
+        if (is_file($this->filename)) { return file_get_contents($this->filename); exit; }
+        return null;
+    }
+
+    // Put a page in the cache.
+    public function cache($page)
+    {
+        if (!$this->shouldBeCached) return;
+        if (!is_dir($GLOBALS['config']['PAGECACHE'])) { mkdir($GLOBALS['config']['PAGECACHE'],0705); chmod($GLOBALS['config']['PAGECACHE'],0705); }
+        file_put_contents($this->filename,$page);
+    }
+
+    // Purge the whole cache.
+    // (call with pageCache::purgeCache())
+    public static function purgeCache()
+    {
+        if (is_dir($GLOBALS['config']['PAGECACHE']))
+        {
+            $handler = opendir($GLOBALS['config']['PAGECACHE']);
+            if ($handle!==false)
+            {
+                while (($filename = readdir($handler))!==false) 
+                {
+                    if (endsWith($filename,'.cache')) { unlink($GLOBALS['config']['PAGECACHE'].'/'.$filename); }
+                }
+                closedir($handler);
+            }
+        }
+    }
+
+}
+
 
 // -----------------------------------------------------------------------------------------------
 // Log to text file
@@ -229,7 +304,7 @@ function isLoggedIn()
     if ($GLOBALS['config']['OPEN_SHAARLI']) return true;
 
     // If session does not exist on server side, or IP address has changed, or session has expired, logout.
-    if (empty($_SESSION['uid']) || $_SESSION['ip']!=allIPs() || time()>=$_SESSION['expires_on'])
+    if (empty($_SESSION['uid']) || ($GLOBALS['disablesessionprotection']==false && $_SESSION['ip']!=allIPs()) || time()>=$_SESSION['expires_on'])
     {
         logout();
         return false;
@@ -305,12 +380,13 @@ if (isset($_POST['login']))
         {
             $_SESSION['longlastingsession']=31536000;  // (31536000 seconds = 1 year)
             $_SESSION['expires_on']=time()+$_SESSION['longlastingsession'];  // Set session expiration on server-side.
-            session_set_cookie_params($_SESSION['longlastingsession']); // Set session cookie expiration on client side
+            session_set_cookie_params($_SESSION['longlastingsession'],dirname($_SERVER["SCRIPT_NAME"]).'/'); // Set session cookie expiration on client side
+            // Note: Never forget the trailing slash on the cookie path !
             session_regenerate_id(true);  // Send cookie with new expiration date to browser.
         }
         else // Standard session expiration (=when browser closes)
         {
-            session_set_cookie_params(0); // 0 means "When browser closes"
+            session_set_cookie_params(0,dirname($_SERVER["SCRIPT_NAME"]).'/'); // 0 means "When browser closes"
             session_regenerate_id(true);
         }
         // Optional redirect after login:
@@ -338,15 +414,23 @@ if (isset($_POST['login']))
 // You can append $_SERVER['SCRIPT_NAME'] to get the current script URL.
 function serverUrl()
 {
-        $https = (!empty($_SERVER['HTTPS']) && (strtolower($_SERVER['HTTPS'])=='on')) || $_SERVER["SERVER_PORT"]=='443'; // HTTPS detection.
-        $serverport = ($_SERVER["SERVER_PORT"]=='80' || ($https && $_SERVER["SERVER_PORT"]=='443') ? '' : ':'.$_SERVER["SERVER_PORT"]);
-        return 'http'.($https?'s':'').'://'.$_SERVER["SERVER_NAME"].$serverport;
+    $https = (!empty($_SERVER['HTTPS']) && (strtolower($_SERVER['HTTPS'])=='on')) || $_SERVER["SERVER_PORT"]=='443'; // HTTPS detection.
+    $serverport = ($_SERVER["SERVER_PORT"]=='80' || ($https && $_SERVER["SERVER_PORT"]=='443') ? '' : ':'.$_SERVER["SERVER_PORT"]);
+    return 'http'.($https?'s':'').'://'.$_SERVER["SERVER_NAME"].$serverport;
 }
 
-// Returns the absolute URL of current script.
+// Returns the absolute URL of current script, without the query.
+// (eg. http://sebsauvage.net/links/)
 function indexUrl()
 {
-        return serverUrl() . ($_SERVER["SCRIPT_NAME"] == '/index.php' ? '/' : $_SERVER["SCRIPT_NAME"]);
+    return serverUrl() . ($_SERVER["SCRIPT_NAME"] == '/index.php' ? '/' : $_SERVER["SCRIPT_NAME"]);
+}
+
+// Returns the absolute URL of current script, WITH the query.
+// (eg. http://sebsauvage.net/links/?toto=titi&spamspamspam=humbug)
+function pageUrl()
+{
+    return indexUrl().(!empty($_SERVER["QUERY_STRING"]) ? '?'.$_SERVER["QUERY_STRING"] : '');
 }
 
 // Convert post_max_size/upload_max_filesize (eg.'16M') parameters to bytes.
@@ -458,7 +542,7 @@ function getHTTP($url,$timeout=30)
         $options = array('http'=>array('method'=>'GET','timeout' => $timeout)); // Force network timeout
         $context = stream_context_create($options);
         $data=file_get_contents($url,false,$context,-1, 4000000); // We download at most 4 Mb from source.
-        if (!$data) { $lasterror=error_get_last();  return array($lasterror['message'],array(),''); }
+        if (!$data) { return array('HTTP Error',array(),''); }
         $httpStatus=$http_response_header[0]; // eg. "HTTP/1.1 200 OK"
         $responseHeaders=http_parse_headers_shaarli($http_response_header);
         return array($httpStatus,$responseHeaders,$data);
@@ -512,6 +596,7 @@ function tokenOk($token)
 class pageBuilder
 {
     private $tpl; // RainTPL template
+
     function __construct()
     {
         $this->tpl=false;
@@ -519,10 +604,8 @@ class pageBuilder
 
     private function initialize()
     {    
-        global $LINKSDB;
         $this->tpl = new RainTPL;    
         $this->tpl->assign('newversion',checkUpdate());
-        $this->tpl->assign('linkcount',count($LINKSDB));
         $this->tpl->assign('feedurl',htmlspecialchars(indexUrl()));
         $searchcrits=''; // Search criteria
         if (!empty($_GET['searchtags'])) $searchcrits.='&searchtags='.urlencode($_GET['searchtags']);
@@ -661,6 +744,7 @@ class linkdb implements Iterator, Countable, ArrayAccess
     {
         if (!$this->loggedin) die('You are not authorized to change the database.');
         file_put_contents($GLOBALS['config']['DATASTORE'], PHPPREFIX.base64_encode(gzdeflate(serialize($this->links))).PHPSUFFIX);
+        invalidateCaches();
     }
 
     // Returns the link for a given URL (if it exists). false it does not exist.
@@ -802,7 +886,15 @@ class linkdb implements Iterator, Countable, ArrayAccess
 // Ouput the last 50 links in RSS 2.0 format.
 function showRSS()
 {
-    global $LINKSDB;
+    header('Content-Type: application/rss+xml; charset=utf-8');
+
+    // Cache system
+    $query = $_SERVER["QUERY_STRING"];
+    $cache = new pageCache(pageUrl(),startsWith($query,'do=rss') && !isLoggedIn());
+    $cached = $cache->cachedVersion(); if (!empty($cached)) { echo $cached; exit; }
+
+    // If cached was not found (or not usable), then read the database and build the response:
+    $LINKSDB=new linkdb(isLoggedIn() || $GLOBALS['config']['OPEN_SHAARLI']);  // Read links from database (and filter private links if used it not logged in).
 
     // Optionnaly filter the results:
     $linksToDisplay=array();
@@ -810,7 +902,6 @@ function showRSS()
     elseif (!empty($_GET['searchtags']))   $linksToDisplay = $LINKSDB->filterTags(trim($_GET['searchtags']));
     else $linksToDisplay = $LINKSDB;
 
-    header('Content-Type: application/rss+xml; charset=utf-8');
     $pageaddr=htmlspecialchars(indexUrl());
     echo '<?xml version="1.0" encoding="UTF-8"?><rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/">';
     echo '<channel><title>'.htmlspecialchars($GLOBALS['title']).'</title><link>'.$pageaddr.'</link>';
@@ -841,6 +932,9 @@ function showRSS()
         $i++;
     }
     echo '</channel></rss>';
+
+    $cache->cache(ob_get_contents());
+    ob_end_flush();
     exit;
 }
 
@@ -848,7 +942,16 @@ function showRSS()
 // Ouput the last 50 links in ATOM format.
 function showATOM()
 {
-    global $LINKSDB;
+    header('Content-Type: application/atom+xml; charset=utf-8');
+
+    // Cache system
+    $query = $_SERVER["QUERY_STRING"];
+    $cache = new pageCache(pageUrl(),startsWith($query,'do=atom') && !isLoggedIn());
+    $cached = $cache->cachedVersion(); if (!empty($cached)) { echo $cached; exit; }
+    // If cached was not found (or not usable), then read the database and build the response:
+
+    $LINKSDB=new linkdb(isLoggedIn() || $GLOBALS['config']['OPEN_SHAARLI']);  // Read links from database (and filter private links if used it not logged in).
+
 
     // Optionnaly filter the results:
     $linksToDisplay=array();
@@ -856,7 +959,6 @@ function showATOM()
     elseif (!empty($_GET['searchtags']))   $linksToDisplay = $LINKSDB->filterTags(trim($_GET['searchtags']));
     else $linksToDisplay = $LINKSDB;
 
-    header('Content-Type: application/atom+xml; charset=utf-8');
     $pageaddr=htmlspecialchars(indexUrl());
     $latestDate = '';
     $entries='';
@@ -896,6 +998,9 @@ function showATOM()
     $feed.=$entries;
     $feed.='</feed>';
     echo $feed;
+    
+    $cache->cache(ob_get_contents());
+    ob_end_flush();
     exit;
 }
 
@@ -905,7 +1010,12 @@ function showATOM()
 // This RSS feed cannot be filtered.
 function showDailyRSS()
 {
-    global $LINKSDB;
+    // Cache system
+    $query = $_SERVER["QUERY_STRING"];
+    $cache = new pageCache(pageUrl(),startsWith($query,'do=dailyrss') && !isLoggedIn());
+    $cached = $cache->cachedVersion(); if (!empty($cached)) { echo $cached; exit; }
+    // If cached was not found (or not usable), then read the database and build the response:
+    $LINKSDB=new linkdb(isLoggedIn() || $GLOBALS['config']['OPEN_SHAARLI']);  // Read links from database (and filter private links if used it not logged in).
     
     /* Some Shaarlies may have very few links, so we need to look
        back in time (rsort()) until we have enough days ($nb_of_days).
@@ -971,6 +1081,73 @@ function showDailyRSS()
 
     }    
     echo '</channel></rss>';
+    
+    $cache->cache(ob_get_contents());
+    ob_end_flush();
+    exit;
+}
+
+// "Daily" page.
+function showDaily()
+{
+    $LINKSDB=new linkdb(isLoggedIn() || $GLOBALS['config']['OPEN_SHAARLI']);  // Read links from database (and filter private links if used it not logged in).
+
+
+    $day=Date('Ymd',strtotime('-1 day')); // Yesterday, in format YYYYMMDD.
+    if (isset($_GET['day'])) $day=$_GET['day'];
+    
+    $days = $LINKSDB->days();
+    $i = array_search($day,$days);
+    if ($i==false) { $i=count($days)-1; $day=$days[$i]; }
+    $previousday=''; 
+    $nextday=''; 
+    if ($i!==false)
+    {
+        if ($i>1) $previousday=$days[$i-1];
+        if ($i<count($days)-1) $nextday=$days[$i+1];
+    }
+
+    $linksToDisplay=$LINKSDB->filterDay($day);
+    // We pre-format some fields for proper output.
+    foreach($linksToDisplay as $key=>$link)
+    {
+        $linksToDisplay[$key]['taglist']=explode(' ',$link['tags']);
+        $linksToDisplay[$key]['formatedDescription']=nl2br(keepMultipleSpaces(text2clickable(htmlspecialchars($link['description']))));
+        $linksToDisplay[$key]['thumbnail'] = thumbnail($link['url']);            
+    }
+    
+    /* We need to spread the articles on 3 columns.
+       I did not want to use a javascript lib like http://masonry.desandro.com/
+       so I manually spread entries with a simple method: I roughly evaluate the 
+       height of a div according to title and description length.
+    */
+    $columns=array(array(),array(),array()); // Entries to display, for each column.
+    $fill=array(0,0,0);  // Rough estimate of columns fill.
+    foreach($linksToDisplay as $key=>$link)
+    {
+        // Roughly estimate length of entry (by counting characters)
+        // Title: 30 chars = 1 line. 1 line is 30 pixels height.
+        // Description: 836 characters gives roughly 342 pixel height.
+        // This is not perfect, but it's usually ok.
+        $length=strlen($link['title'])+(342*strlen($link['description']))/836;
+        if ($link['thumbnail']) $length +=100; // 1 thumbnails roughly takes 100 pixels height.
+        // Then put in column which is the less filled:
+        $smallest=min($fill); // find smallest value in array.
+        $index=array_search($smallest,$fill); // find index of this smallest value.
+        array_push($columns[$index],$link); // Put entry in this column.
+        $fill[$index]+=$length;
+    }
+    $PAGE = new pageBuilder;
+    $PAGE->assign('linksToDisplay',$linksToDisplay);
+    $PAGE->assign('linkcount',count($LINKSDB));
+    $PAGE->assign('col1',$columns[0]);
+    $PAGE->assign('col1',$columns[0]);
+    $PAGE->assign('col2',$columns[1]);
+    $PAGE->assign('col3',$columns[2]);
+    $PAGE->assign('day',utf8_encode(strftime('%A %d, %B %Y',linkdate2timestamp($day.'_000000'))));
+    $PAGE->assign('previousday',$previousday);
+    $PAGE->assign('nextday',$nextday);    
+    $PAGE->renderPage('daily');
     exit;
 }
 
@@ -980,7 +1157,12 @@ function showDailyRSS()
 // This RSS feed cannot be filtered.
 function showWeeklyRSS()
 {
-    global $LINKSDB;
+    // Cache system
+    $query = $_SERVER["QUERY_STRING"];
+    $cache = new pageCache(pageUrl(),startsWith($query,'do=weeklyrss') && !isLoggedIn());
+    $cached = $cache->cachedVersion(); if (!empty($cached)) { echo $cached; exit; }
+    // If cached was not found (or not usable), then read the database and build the response:
+    $LINKSDB=new linkdb(isLoggedIn() || $GLOBALS['config']['OPEN_SHAARLI']);  // Read links from database (and filter private links if used it not logged in).
     
     /* Some Shaarlies may have very few links, so we need to look
        back in time (rsort()) until we have enough weeks ($nb_of_weeks).
@@ -1059,7 +1241,12 @@ function showWeeklyRSS()
 // This RSS feed cannot be filtered.
 function showMonthlyRSS()
 {
-    global $LINKSDB;
+    // Cache system
+    $query = $_SERVER["QUERY_STRING"];
+    $cache = new pageCache(pageUrl(),startsWith($query,'do=weeklyrss') && !isLoggedIn());
+    $cached = $cache->cachedVersion(); if (!empty($cached)) { echo $cached; exit; }
+    // If cached was not found (or not usable), then read the database and build the response:
+    $LINKSDB=new linkdb(isLoggedIn() || $GLOBALS['config']['OPEN_SHAARLI']);  // Read links from database (and filter private links if used it not logged in).
     
     /* Some Shaarlies may have very few links, so we need to look
        back in time (rsort()) until we have enough weeks ($nb_of_weeks).
@@ -1133,7 +1320,7 @@ function showMonthlyRSS()
 // Render HTML page (according to URL parameters and user rights)
 function renderPage()
 {
-    global $LINKSDB;
+    $LINKSDB=new linkdb(isLoggedIn() || $GLOBALS['config']['OPEN_SHAARLI']);  // Read links from database (and filter private links if used it not logged in).
 
     // -------- Display login form.
     if (isset($_SERVER["QUERY_STRING"]) && startswith($_SERVER["QUERY_STRING"],'do=login'))
@@ -1179,6 +1366,7 @@ function renderPage()
             }
         }
         $PAGE = new pageBuilder;
+        $PAGE->assign('linkcount',count($LINKSDB));
         $PAGE->assign('linksToDisplay',$linksToDisplay);
         $PAGE->renderPage('picwall');
         exit;
@@ -1198,6 +1386,7 @@ function renderPage()
             $tagList[$key] = array('count'=>$value,'size'=>max(40*$value/$maxcount,8));
         }
         $PAGE = new pageBuilder;
+        $PAGE->assign('linkcount',count($LINKSDB));
         $PAGE->assign('tags',$tagList);
         $PAGE->renderPage('tagcloud');
         exit;    
@@ -1252,65 +1441,6 @@ function renderPage()
             unset($_SESSION['privateonly']); // See all links
         }
         header('Location: '.(empty($_SERVER['HTTP_REFERER'])?'?':$_SERVER['HTTP_REFERER']));
-        exit;
-    }
-    
-    // --------- Daily (all links form a specific day) ----------------------
-    if (isset($_SERVER["QUERY_STRING"]) && startswith($_SERVER["QUERY_STRING"],'do=daily'))
-    { 
-        $day=Date('Ymd',strtotime('-1 day')); // Yesterday, in format YYYYMMDD.
-        if (isset($_GET['day'])) $day=$_GET['day'];
-        
-        $days = $LINKSDB->days();
-        $i = array_search($day,$days);
-        if ($i==false) { $i=count($days)-1; $day=$days[$i]; }
-        $previousday=''; 
-        $nextday=''; 
-        if ($i!==false)
-        {
-            if ($i>1) $previousday=$days[$i-1];
-            if ($i<count($days)-1) $nextday=$days[$i+1];
-        }
-
-        $linksToDisplay=$LINKSDB->filterDay($day);
-        // We pre-format some fields for proper output.
-        foreach($linksToDisplay as $key=>$link)
-        {
-            $linksToDisplay[$key]['taglist']=explode(' ',$link['tags']);
-            $linksToDisplay[$key]['formatedDescription']=nl2br(keepMultipleSpaces(text2clickable(htmlspecialchars($link['description']))));
-            $linksToDisplay[$key]['thumbnail'] = thumbnail($link['url']);            
-        }
-        
-        /* We need to spread the articles on 3 columns.
-           I did not want to use a javascript lib like http://masonry.desandro.com/
-           so I manually spread entries with a simple method: I roughly evaluate the 
-           height of a div according to title and description length.
-        */
-        $columns=array(array(),array(),array()); // Entries to display, for each column.
-        $fill=array(0,0,0);  // Rough estimate of columns fill.
-        foreach($linksToDisplay as $key=>$link)
-        {
-            // Roughly estimate length of entry (by counting characters)
-            // Title: 30 chars = 1 line. 1 line is 30 pixels height.
-            // Description: 836 characters gives roughly 342 pixel height.
-            // This is not perfect, but it's usually ok.
-            $length=strlen($link['title'])+(342*strlen($link['description']))/836;
-            if ($link['thumbnail']) $length +=100; // 1 thumbnails roughly takes 100 pixels height.
-            // Then put in column which is the less filled:
-            $smallest=min($fill); // find smallest value in array.
-            $index=array_search($smallest,$fill); // find index of this smallest value.
-            array_push($columns[$index],$link); // Put entry in this column.
-            $fill[$index]+=$length;
-        }
-        $PAGE = new pageBuilder;
-        $PAGE->assign('linksToDisplay',$linksToDisplay);
-        $PAGE->assign('col1',$columns[0]);
-        $PAGE->assign('col2',$columns[1]);
-        $PAGE->assign('col3',$columns[2]);
-        $PAGE->assign('day',utf8_encode(strftime('%A %d, %B %Y',linkdate2timestamp($day.'_000000'))));
-        $PAGE->assign('previousday',$previousday);
-        $PAGE->assign('nextday',$nextday);    
-        $PAGE->renderPage('daily');
         exit;
     }
 
@@ -1442,7 +1572,7 @@ function renderPage()
             exit;
         }
         $PAGE = new pageBuilder;
-        buildLinkList($PAGE); // Compute list of links to display
+        buildLinkList($PAGE,$LINKSDB); // Compute list of links to display
         $PAGE->renderPage('linklist');
         exit; // Never remove this one ! All operations below are reserved for logged in user.
     }
@@ -1453,6 +1583,7 @@ function renderPage()
     if (isset($_SERVER["QUERY_STRING"]) && startswith($_SERVER["QUERY_STRING"],'do=tools'))
     {
         $PAGE = new pageBuilder;
+        $PAGE->assign('linkcount',count($LINKSDB));
         $PAGE->assign('pageabsaddr',indexUrl());
         $PAGE->renderPage('tools');
         exit;
@@ -1479,6 +1610,7 @@ function renderPage()
         else // show the change password form.
         {
             $PAGE = new pageBuilder;
+            $PAGE->assign('linkcount',count($LINKSDB));
             $PAGE->assign('token',getToken());
             $PAGE->renderPage('changepassword');
             exit;
@@ -1498,6 +1630,7 @@ function renderPage()
             $GLOBALS['timezone'] = $tz;
             $GLOBALS['title']=$_POST['title'];
             $GLOBALS['redirector']=$_POST['redirector'];
+            $GLOBALS['disablesessionprotection']=!empty($_POST['disablesessionprotection']);
             writeConfig();
             echo '<script language="JavaScript">alert("Configuration was saved.");document.location=\'?do=tools\';</script>';
             exit;
@@ -1505,6 +1638,7 @@ function renderPage()
         else // Show the configuration form.
         {
             $PAGE = new pageBuilder;
+            $PAGE->assign('linkcount',count($LINKSDB));
             $PAGE->assign('token',getToken());
             $PAGE->assign('title',htmlspecialchars( empty($GLOBALS['title']) ? '' : $GLOBALS['title'] , ENT_QUOTES));
             $PAGE->assign('redirector',htmlspecialchars( empty($GLOBALS['redirector']) ? '' : $GLOBALS['redirector'] , ENT_QUOTES));
@@ -1522,6 +1656,7 @@ function renderPage()
         if (empty($_POST['fromtag']))
         {
             $PAGE = new pageBuilder;
+            $PAGE->assign('linkcount',count($LINKSDB));
             $PAGE->assign('token',getToken());
             $PAGE->renderPage('changetag');
             exit;
@@ -1541,7 +1676,6 @@ function renderPage()
                 $LINKSDB[$key]=$value;
             }
             $LINKSDB->savedb(); // save to disk
-            invalidateCaches();
             echo '<script language="JavaScript">alert("Tag was removed from '.count($linksToAlter).' links.");document.location=\'?\';</script>';
             exit;
         }
@@ -1559,7 +1693,6 @@ function renderPage()
                 $LINKSDB[$key]=$value;
             }
             $LINKSDB->savedb(); // save to disk
-            invalidateCaches();
             echo '<script language="JavaScript">alert("Tag was renamed in '.count($linksToAlter).' links.");document.location=\'?searchtags='.urlencode($_POST['totag']).'\';</script>';
             exit;
         }
@@ -1569,6 +1702,7 @@ function renderPage()
     if (isset($_SERVER["QUERY_STRING"]) && startswith($_SERVER["QUERY_STRING"],'do=addlink'))
     {
         $PAGE = new pageBuilder;
+        $PAGE->assign('linkcount',count($LINKSDB));
         $PAGE->renderPage('addlink');
         exit;
     }
@@ -1585,7 +1719,6 @@ function renderPage()
         $LINKSDB[$linkdate] = $link;
         $LINKSDB->savedb(); // save to disk
         pubsubhub();
-        invalidateCaches();
 
         // If we are called from the bookmarklet, we must close the popup:
         if (isset($_GET['source']) && $_GET['source']=='bookmarklet') { echo '<script language="JavaScript">self.close();</script>'; exit; }
@@ -1614,10 +1747,11 @@ function renderPage()
         $linkdate=$_POST['lf_linkdate'];
         unset($LINKSDB[$linkdate]);
         $LINKSDB->savedb(); // save to disk
-        invalidateCaches();
+
         // If we are called from the bookmarklet, we must close the popup:
         if (isset($_GET['source']) && $_GET['source']=='bookmarklet') { echo '<script language="JavaScript">self.close();</script>'; exit; }
         $returnurl = ( isset($_POST['returnurl']) ? $_POST['returnurl'] : '?' );
+        if ($returnurl=='?') { $returnurl = (isset($_SERVER['HTTP_REFERER']) ? $_SERVER['HTTP_REFERER'] : '?'); }
         header('Location: '.$returnurl); // After deleting the link, redirect to the page the user was on.
         exit;
     }
@@ -1628,6 +1762,7 @@ function renderPage()
         $link = $LINKSDB[$_GET['edit_link']];  // Read database
         if (!$link) { header('Location: ?'); exit; } // Link not found in database.
         $PAGE = new pageBuilder;
+        $PAGE->assign('linkcount',count($LINKSDB));
         $PAGE->assign('link',$link);
         $PAGE->assign('link_is_new',false);
         $PAGE->assign('token',getToken()); // XSRF protection.
@@ -1661,12 +1796,14 @@ function renderPage()
                 list($status,$headers,$data) = getHTTP($url,4); // Short timeout to keep the application responsive.
                 // FIXME: Decode charset according to specified in either 1) HTTP response headers or 2) <head> in html
                 if (strpos($status,'200 OK')!==false) $title=html_entity_decode(html_extract_title($data),ENT_QUOTES,'UTF-8');
+
             }
             if ($url=='') $url='?'.smallHash($linkdate); // In case of empty URL, this is just a text (with a link that point to itself)
             $link = array('linkdate'=>$linkdate,'title'=>$title,'url'=>$url,'description'=>$description,'tags'=>$tags,'private'=>0);
         }
 
         $PAGE = new pageBuilder;
+        $PAGE->assign('linkcount',count($LINKSDB));
         $PAGE->assign('link',$link);
         $PAGE->assign('link_is_new',$link_is_new);
         $PAGE->assign('token',getToken()); // XSRF protection.
@@ -1681,6 +1818,7 @@ function renderPage()
         if (empty($_GET['what']))
         {
             $PAGE = new pageBuilder;
+            $PAGE->assign('linkcount',count($LINKSDB));
             $PAGE->renderPage('export');
             exit;
         }
@@ -1734,6 +1872,7 @@ HTML;
     if (isset($_SERVER["QUERY_STRING"]) && startswith($_SERVER["QUERY_STRING"],'do=import'))
     {
         $PAGE = new pageBuilder;
+        $PAGE->assign('linkcount',count($LINKSDB));
         $PAGE->assign('token',getToken());
         $PAGE->assign('maxfilesize',getMaxFileSize());
         $PAGE->renderPage('import');
@@ -1742,7 +1881,8 @@ HTML;
 
     // -------- Otherwise, simply display search form and links:
     $PAGE = new pageBuilder;
-    buildLinkList($PAGE); // Compute list of links to display
+    $PAGE->assign('linkcount',count($LINKSDB));
+    buildLinkList($PAGE,$LINKSDB); // Compute list of links to display
     $PAGE->renderPage('linklist');
     exit;
 }
@@ -1751,7 +1891,8 @@ HTML;
 // Process the import file form.
 function importFile()
 {
-    global $LINKSDB;
+    if (!(isLoggedIn() || $GLOBALS['config']['OPEN_SHAARLI'])) { die('Not allowed.'); }
+    $LINKSDB=new linkdb(isLoggedIn() || $GLOBALS['config']['OPEN_SHAARLI']);  // Read links from database (and filter private links if used it not logged in).
     $filename=$_FILES['filetoupload']['name'];
     $filesize=$_FILES['filetoupload']['size'];
     $data=file_get_contents($_FILES['filetoupload']['tmp_name']);
@@ -1818,7 +1959,7 @@ function importFile()
             }
         }
         $LINKSDB->savedb();
-        invalidateCaches();
+
         echo '<script language="JavaScript">alert("File '.$filename.' ('.$filesize.' bytes) was successfully processed: '.$import_count.' links imported.");document.location=\'?\';</script>';
     }
     else
@@ -1830,21 +1971,19 @@ function importFile()
 // -----------------------------------------------------------------------------------------------
 // Template for the list of links (<div id="linklist">)
 // This function fills all the necessary fields in the $PAGE for the template 'linklist.html'
-function buildLinkList($PAGE)
+function buildLinkList($PAGE,$LINKSDB)
 {
-    global $LINKSDB;  // Get the links database.
-
     // ---- Filter link database according to parameters
     $linksToDisplay=array();
     $search_type='';
     $search_crits='';
-    if (!empty($_GET['searchterm'])) // Fulltext search
+    if (isset($_GET['searchterm'])) // Fulltext search
     {
         $linksToDisplay = $LINKSDB->filterFulltext(trim($_GET['searchterm']));
         $search_crits=htmlspecialchars(trim($_GET['searchterm']));
         $search_type='fulltext';
     }
-    elseif (!empty($_GET['searchtags'])) // Search by tag
+    elseif (isset($_GET['searchtags'])) // Search by tag
     {
         $linksToDisplay = $LINKSDB->filterTags(trim($_GET['searchtags']));
         $search_crits=explode(' ',trim($_GET['searchtags']));
@@ -1853,6 +1992,13 @@ function buildLinkList($PAGE)
     elseif (isset($_SERVER['QUERY_STRING']) && preg_match('/[a-zA-Z0-9-_@]{6}(&.+?)?/',$_SERVER['QUERY_STRING'])) // Detect smallHashes in URL
     {
         $linksToDisplay = $LINKSDB->filterSmallHash(substr(trim($_SERVER["QUERY_STRING"], '/'),0,6));
+        if (count($linksToDisplay)==0)
+        {
+            header($_SERVER["SERVER_PROTOCOL"]." 404 Not Found");
+            echo '<h1>404 Not found.</h1>Oh crap. The link you are trying to reach does not exist or has been deleted.';
+            echo '<br>You would mind <a href="?">clicking here</a> ?';
+            exit;
+        }
         $search_type='permalink';
     }
     else
@@ -1911,6 +2057,7 @@ function buildLinkList($PAGE)
     $token = ''; if (isLoggedIn()) $token=getToken();   
  
     // Fill all template fields.
+    $PAGE->assign('linkcount',count($LINKSDB));
     $PAGE->assign('previous_page_url',$previous_page_url);
     $PAGE->assign('next_page_url',$next_page_url);
     $PAGE->assign('page_current',$page);
@@ -2164,7 +2311,7 @@ function templateTZform($ptz=false)
             {
                 $continent=substr($tz,0,$spos); $city=substr($tz,$spos+1);
                 $continents[$continent]=1;
-                if (!isset($cities[$continent])) $cities[$continent]=array();
+                if (!isset($cities[$continent])) $cities[$continent]='';
                 $cities[$continent].='<option value="'.$city.'"'.($pcity==$city?'selected':'').'>'.$city.'</option>';
             }
         }
@@ -2205,7 +2352,7 @@ function processWS()
 {
     if (empty($_GET['ws']) || empty($_GET['term'])) return;
     $term = $_GET['term'];
-    global $LINKSDB;
+    $LINKSDB=new linkdb(isLoggedIn() || $GLOBALS['config']['OPEN_SHAARLI']);  // Read links from database (and filter private links if used it not logged in).
     header('Content-Type: application/json; charset=utf-8');
 
     // Search in tags (case insentitive, cumulative search)
@@ -2246,9 +2393,11 @@ function writeConfig()
 {
     if (is_file($GLOBALS['config']['CONFIG_FILE']) && !isLoggedIn()) die('You are not authorized to alter config.'); // Only logged in user can alter config.
     if (empty($GLOBALS['redirector'])) $GLOBALS['redirector']='';
+    if (empty($GLOBALS['disablesessionprotection'])) $GLOBALS['disablesessionprotection']=false;
     $config='<?php $GLOBALS[\'login\']='.var_export($GLOBALS['login'],true).'; $GLOBALS[\'hash\']='.var_export($GLOBALS['hash'],true).'; $GLOBALS[\'salt\']='.var_export($GLOBALS['salt'],true).'; ';
     $config .='$GLOBALS[\'timezone\']='.var_export($GLOBALS['timezone'],true).'; date_default_timezone_set('.var_export($GLOBALS['timezone'],true).'); $GLOBALS[\'title\']='.var_export($GLOBALS['title'],true).';';
     $config .= '$GLOBALS[\'redirector\']='.var_export($GLOBALS['redirector'],true).'; ';
+    $config .= '$GLOBALS[\'disablesessionprotection\']='.var_export($GLOBALS['disablesessionprotection'],true).'; ';
     $config .= ' ?>';
     if (!file_put_contents($GLOBALS['config']['CONFIG_FILE'],$config) || strcmp(file_get_contents($GLOBALS['config']['CONFIG_FILE']),$config)!=0)
     {
@@ -2295,20 +2444,14 @@ function genThumbnail()
 
     if ($domain=='flickr.com' || endsWith($domain,'.flickr.com'))
     {
-        // WTF ? I need a flickr API key to get a fucking thumbnail ? No way.
-        // I'll extract the thumbnail URL myself. First, we have to get the flickr HTML page.
-        // All images in Flickr are in the form:
-        // http://farm[farm].static.flickr.com/[server]/[id]_[secret]_[size].jpg
-        // Example: http://farm7.static.flickr.com/6205/6088513739_fc158467fe_z.jpg
-        // We want the 240x120 format, which is _m.jpg.
-        // We search for the first image in the page which does not have the _s size,
-        // when use the _m to get the thumbnail.
+        // Crude replacement to handle new Flickr domain policy (They prefer www. now)
+        $url = str_replace('http://flickr.com/','http://www.flickr.com/',$url);
 
         // Is this a link to an image, or to a flickr page ?
         $imageurl='';
         if (endswith(parse_url($url,PHP_URL_PATH),'.jpg'))
-        {  // This is a direct link to an image. eg. http://farm1.static.flickr.com/5/5921913_ac83ed27bd_o.jpg
-            preg_match('!(http://farm\d+.static.flickr.com/\d+/\d+_\w+_)\w.jpg!',$url,$matches);
+        {  // This is a direct link to an image. eg. http://farm1.staticflickr.com/5/5921913_ac83ed27bd_o.jpg
+            preg_match('!(http://farm\d+\.staticflickr\.com/\d+/\d+_\w+_)\w.jpg!',$url,$matches);
             if (!empty($matches[1])) $imageurl=$matches[1].'m.jpg';
         }
         else // this is a flickr page (html)
@@ -2316,10 +2459,21 @@ function genThumbnail()
             list($httpstatus,$headers,$data) = getHTTP($url,20); // Get the flickr html page.
             if (strpos($httpstatus,'200 OK')!==false)
             {
-                preg_match('!(http://farm\d+.static.flickr.com/\d+/\d+_\w+_)[^s].jpg!',$data,$matches);
-                if (!empty($matches[1])) $imageurl=$matches[1].'m.jpg';
+                // Flickr now nicely provides the URL of the thumbnail in each flickr page.
+                preg_match('!<link rel=\"image_src\" href=\"(.+?)\"!',$data,$matches);
+                if (!empty($matches[1])) $imageurl=$matches[1];
+
+                // In albums (and some other pages), the link rel="image_src" is not provided,
+                // but flickr provides:
+                // <meta property="og:image" content="http://farm4.staticflickr.com/3398/3239339068_25d13535ff_z.jpg" />
+                if ($imageurl=='')
+                {
+                    preg_match('!<meta property=\"og:image\" content=\"(.+?)\"!',$data,$matches);
+                    if (!empty($matches[1])) $imageurl=$matches[1];
+                }
             }
         }
+
         if ($imageurl!='')
         {   // Let's download the image.
             list($httpstatus,$headers,$data) = getHTTP($imageurl,10); // Image is 240x120, so 10 seconds to download should be enough.
@@ -2474,17 +2628,19 @@ function resizeImage($filepath)
 // (eg. tags cache).
 function invalidateCaches()
 {
-    unset($_SESSION['tags']);
+    unset($_SESSION['tags']);  // Purge cache attached to session.
+    pageCache::purgeCache();   // Purge page cache shared by sessions.
 }
 
 if (isset($_SERVER["QUERY_STRING"]) && startswith($_SERVER["QUERY_STRING"],'do=genthumbnail')) { genThumbnail(); exit; }  // Thumbnail generation/cache does not need the link database.
-$LINKSDB=new linkdb(isLoggedIn() || $GLOBALS['config']['OPEN_SHAARLI']);  // Read links from database (and filter private links if used it not logged in).
-if (isset($_SERVER["QUERY_STRING"]) && startswith($_SERVER["QUERY_STRING"],'ws=')) { processWS(); exit; } // Webservices (for jQuery/jQueryUI)
-if (!isset($_SESSION['LINKS_PER_PAGE'])) $_SESSION['LINKS_PER_PAGE']=$GLOBALS['config']['LINKS_PER_PAGE'];
+//$LINKSDB=new linkdb(isLoggedIn() || $GLOBALS['config']['OPEN_SHAARLI']);  // Read links from database (and filter private links if used it not logged in).
+if (isset($_SERVER["QUERY_STRING"]) && startswith($_SERVER["QUERY_STRING"],'do=rss')) { showRSS(); exit; }
+if (isset($_SERVER["QUERY_STRING"]) && startswith($_SERVER["QUERY_STRING"],'do=atom')) { showATOM(); exit; }
 if (isset($_SERVER["QUERY_STRING"]) && startswith($_SERVER["QUERY_STRING"],'do=dailyrss')) { showDailyRSS(); exit; }
 if (isset($_SERVER["QUERY_STRING"]) && startswith($_SERVER["QUERY_STRING"],'do=weeklyrss')) { showWeeklyRSS(); exit; }
 if (isset($_SERVER["QUERY_STRING"]) && startswith($_SERVER["QUERY_STRING"],'do=monthlyrss')) { showMonthlyRSS(); exit; }
-if (isset($_SERVER["QUERY_STRING"]) && startswith($_SERVER["QUERY_STRING"],'do=rss')) { showRSS(); exit; }
-if (isset($_SERVER["QUERY_STRING"]) && startswith($_SERVER["QUERY_STRING"],'do=atom')) { showATOM(); exit; }
+if (isset($_SERVER["QUERY_STRING"]) && startswith($_SERVER["QUERY_STRING"],'do=daily')) { showDaily(); exit; }    
+if (isset($_SERVER["QUERY_STRING"]) && startswith($_SERVER["QUERY_STRING"],'ws=')) { processWS(); exit; } // Webservices (for jQuery/jQueryUI)
+if (!isset($_SESSION['LINKS_PER_PAGE'])) $_SESSION['LINKS_PER_PAGE']=$GLOBALS['config']['LINKS_PER_PAGE'];
 renderPage();
 ?>
